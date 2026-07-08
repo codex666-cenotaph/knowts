@@ -48,13 +48,33 @@ def _audio_file(settings: Settings, filename: str) -> Path:
 
 
 @router.get("")
-def archive(request: Request, user: User = Depends(auth_mod.require_user)):
+def archive(
+    request: Request,
+    q: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    user: User = Depends(auth_mod.require_user),
+):
     conn = _db(request)
-    rows = meetings_mod.list_for_user(conn, user)
+    rows = meetings_mod.search_for_user(
+        conn,
+        user,
+        query=q.strip() or None,
+        date_from=date_from.strip() or None,
+        date_to=date_to.strip() or None,
+    )
     items = [
         {"meeting": m, "notes": meetings_mod.note_count(conn, m.id)} for m in rows
     ]
-    return render(request, "meetings_list.html", items=items)
+    return render(
+        request,
+        "meetings_list.html",
+        items=items,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        filtered=bool(q or date_from or date_to),
+    )
 
 
 # --- Upload --------------------------------------------------------------
@@ -270,6 +290,28 @@ def transcript_srt(
         media_type="application/x-subrip; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="meeting-{meeting_id}.srt"'
+        },
+    )
+
+
+@router.get("/{meeting_id}/notes/{note_id}.md")
+def note_markdown(
+    request: Request,
+    meeting_id: int,
+    note_id: int,
+    user: User = Depends(auth_mod.require_user),
+):
+    conn = _db(request)
+    meetings_mod.get_owned(conn, meeting_id, user)  # ownership check
+    note = meetings_mod.get_note(conn, note_id)
+    if note is None or note.meeting_id != meeting_id:
+        return Response("Note not found.", status_code=status.HTTP_404_NOT_FOUND)
+    slug = (note.prompt_name or "notes").replace(" ", "-")
+    return Response(
+        note.markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="meeting-{meeting_id}-{slug}.md"'
         },
     )
 

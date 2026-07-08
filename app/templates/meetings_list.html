@@ -2,6 +2,15 @@
 {% block title %}Meetings · knowts{% endblock %}
 {% block content %}
 <h1>Meetings</h1>
+
+<form method="get" action="/meetings" class="row-form filter-form">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search by title">
+  <label class="date-field">From <input type="date" name="date_from" value="{{ date_from }}"></label>
+  <label class="date-field">To <input type="date" name="date_to" value="{{ date_to }}"></label>
+  <button type="submit" class="primary">Filter</button>
+  {% if filtered %}<a href="/meetings">Clear</a>{% endif %}
+</form>
+
 {% if items %}
 <table class="table">
   <thead>
@@ -20,6 +29,8 @@
     {% endfor %}
   </tbody>
 </table>
+{% elif filtered %}
+<p class="muted">No meetings match your filter. <a href="/meetings">Clear filter</a></p>
 {% else %}
 <p class="muted">No meetings yet. <a href="/">Upload one →</a></p>
 {% endif %}

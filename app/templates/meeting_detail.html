@@ -55,15 +55,29 @@
 <section class="card">
   <h3>Notes</h3>
   {% if notes %}
-    {% for n in notes %}
-    <article class="note">
-      <header class="note-head">
-        <strong>{{ n.prompt_name or 'notes' }}</strong>
-        <span class="muted">{{ n.model_used or '' }} · {{ n.created_at[:16] }}</span>
-      </header>
-      <div class="note-body">{{ rendered_notes[n.id]|safe }}</div>
-    </article>
-    {% endfor %}
+    <div class="note-tabs" data-note-tabs>
+      <div class="tab-labels" role="tablist">
+        {% for n in notes %}
+        <button type="button" class="tab-label" data-tab-target="note-{{ n.id }}"
+                {% if loop.first %}aria-selected="true"{% endif %}>
+          {{ n.prompt_name or 'notes' }}
+        </button>
+        {% endfor %}
+      </div>
+      {% for n in notes %}
+      <article class="note tab-panel" id="note-{{ n.id }}" role="tabpanel">
+        <header class="note-head">
+          <span class="muted">{{ n.model_used or '' }}{% if n.model_used %} · {% endif %}{{ n.created_at[:16] }}</span>
+          <span class="note-tools">
+            <button type="button" class="linkbtn" data-copy-note="{{ n.id }}">Copy</button>
+            <a href="/meetings/{{ meeting.id }}/notes/{{ n.id }}.md">Download .md</a>
+          </span>
+        </header>
+        <textarea class="note-raw" id="note-raw-{{ n.id }}" hidden>{{ n.markdown }}</textarea>
+        <div class="note-body">{{ rendered_notes[n.id]|safe }}</div>
+      </article>
+      {% endfor %}
+    </div>
   {% else %}
     <p class="muted">No notes generated yet.</p>
   {% endif %}
@@ -86,4 +100,37 @@
   </details>
   {% endif %}
 </section>
+
+<script>
+// Progressive enhancement: without JS every note panel stays visible (stacked);
+// with JS they become tabs. Copy buttons lift the raw Markdown to the clipboard.
+(function () {
+  document.querySelectorAll('[data-note-tabs]').forEach(function (root) {
+    var labels = root.querySelectorAll('.tab-label');
+    var panels = root.querySelectorAll('.tab-panel');
+    if (labels.length < 2) return;  // one note: nothing to tab between
+    function select(id) {
+      panels.forEach(function (p) { p.style.display = (p.id === id) ? '' : 'none'; });
+      labels.forEach(function (l) {
+        l.setAttribute('aria-selected', l.dataset.tabTarget === id ? 'true' : 'false');
+      });
+    }
+    labels.forEach(function (l) {
+      l.addEventListener('click', function () { select(l.dataset.tabTarget); });
+    });
+    select(labels[0].dataset.tabTarget);
+  });
+  document.querySelectorAll('[data-copy-note]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var ta = document.getElementById('note-raw-' + btn.dataset.copyNote);
+      if (!ta) return;
+      navigator.clipboard.writeText(ta.value).then(function () {
+        var original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = original; }, 1500);
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}

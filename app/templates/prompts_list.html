@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Prompts · knowts{% endblock %}
+{% block content %}
+<div class="meeting-header">
+  <h1>Prompts</h1>
+  <a href="/prompts/new" class="btn">New prompt</a>
+</div>
+<p class="muted">Prompts turn a transcript into notes. Official prompts (🔒) are the
+  shared library; clone any prompt to make an editable personal copy.</p>
+
+<form method="get" action="/prompts" class="row-form filter-form">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search name or description">
+  <label class="check inline-check">
+    <input type="checkbox" name="show" value="all" {% if include_archived %}checked{% endif %}
+           onchange="this.form.submit()">
+    <span>Include archived</span>
+  </label>
+  <button type="submit" class="primary">Search</button>
+  {% if q or include_archived %}<a href="/prompts">Clear</a>{% endif %}
+</form>
+
+{% if items %}
+<table class="grid">
+  <thead>
+    <tr><th>Name</th><th>Kind</th><th>Description</th><th>Versions</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {% for it in items %}
+    {% set p = it.prompt %}
+    <tr class="{{ 'inactive' if p.archived else '' }}">
+      <td><a href="/prompts/{{ p.id }}">{{ p.name }}</a>
+        {% if p.archived %} <span class="badge">archived</span>{% endif %}
+      </td>
+      <td>
+        {% if p.is_official %}<span class="badge" title="official (read-only)">🔒 official</span>
+        {% else %}<span class="badge">personal</span>
+          <small class="muted">{{ it.owner_username or '—' }}</small>
+        {% endif %}
+      </td>
+      <td class="muted">{{ p.description or '' }}</td>
+      <td>v{{ it.latest_version }}</td>
+      <td class="actions">
+        <form method="post" action="/prompts/{{ p.id }}/clone" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="linkbtn">Clone</button>
+        </form>
+        {% if p.archived %}
+        <form method="post" action="/prompts/{{ p.id }}/archive" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="archived" value="0">
+          <button type="submit" class="linkbtn">Restore</button>
+        </form>
+        {% else %}
+        <form method="post" action="/prompts/{{ p.id }}/archive" class="inline"
+              onsubmit="return confirm('Archive this prompt? It stays out of the picker but past notes keep their reference.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="archived" value="1">
+          <button type="submit" class="linkbtn">Archive</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No prompts match. <a href="/prompts/new">Create one →</a></p>
+{% endif %}
+{% endblock %}

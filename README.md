@@ -3,7 +3,8 @@ convert meeting mp3 files to meeting notes on your own setup.
 
 See [PLAN.md](./PLAN.md) for the full design. Phase 0 (self-hosted whisper STT
 on the `link` machine) lives in [`deploy/`](./deploy/). This repo now also
-contains **Phase 1** (skeleton + auth) and **Phase 2** (the pipeline core).
+contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
+**Phase 3** (the full web UI).
 
 ## What's here (Phase 1)
 
@@ -36,15 +37,27 @@ contains **Phase 1** (skeleton + auth) and **Phase 2** (the pipeline core).
   it fits the context window, otherwise chunked map-reduce (segment-boundary
   chunking with overlap, then a reduce/merge pass).
 - **Prompts**: the official starter set (`summary`, `action-items`, `decisions`,
-  `minutes`, `qa-highlights`) is seeded on first run; full prompt management UI
-  lands in Phase 3.
+  `minutes`, `qa-highlights`) is seeded on first run.
 - **Meeting UI**: upload page, meetings archive, and a detail page with an audio
   player (HTTP range streaming), transcript panel with `.txt`/`.srt` download,
   rendered Markdown notes, "generate more notes" against the stored transcript
   (no re-transcription), live HTMX status polling, and delete.
 
-The polished archive/detail experience and the full prompt manager arrive in
-Phase 3.
+## What's here (Phase 3 — full web UI)
+
+- **Meetings archive** with title search and a meeting-date range filter
+  (ownership-scoped: members see their own, admins see all).
+- **Meeting detail polish**: generated note sets are shown as tabs (one per
+  prompt run), each with a copy button and a `.md` download, alongside the
+  existing audio player and `.txt`/`.srt` transcript exports.
+- **Prompt manager** (`/prompts`): list/search with official-vs-personal badges,
+  create, edit, clone, and archive. Edits are versioned (each save appends a new
+  prompt version so past notes stay attributable) and enforced server-side —
+  official prompts are editable by admins only, personal prompts by their owner
+  or an admin, and clone is available to everyone on every prompt. The editor
+  offers a live model dropdown from llama-swap's `/v1/models`, `{transcript}`
+  placeholder validation, and a **test-run** that previews a prompt against a
+  transcript snippet before saving.
 
 ## Run locally
 

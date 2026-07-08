@@ -125,6 +125,37 @@ def test_transcript_download_404_before_ready(client, monkeypatch):
     assert client.get(f"{loc}/transcript.txt").status_code == 404
 
 
+def test_archive_search_and_date_filter(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    # Two meetings with distinct titles/dates.
+    client.post(
+        "/meetings",
+        data={"title": "Budget review", "meeting_date": "2026-03-10", "csrf_token": csrf, "prompt_ids": ["1"]},
+        files={"file": ("a.mp3", b"ID3x", "audio/mpeg")},
+        follow_redirects=False,
+    )
+    client.post(
+        "/meetings",
+        data={"title": "Hiring sync", "meeting_date": "2026-05-20", "csrf_token": csrf, "prompt_ids": ["1"]},
+        files={"file": ("b.mp3", b"ID3y", "audio/mpeg")},
+        follow_redirects=False,
+    )
+
+    # Title search.
+    hits = client.get("/meetings?q=Budget").text
+    assert "Budget review" in hits and "Hiring sync" not in hits
+
+    # Date range excludes the March meeting.
+    ranged = client.get("/meetings?date_from=2026-05-01").text
+    assert "Hiring sync" in ranged and "Budget review" not in ranged
+
+    # A filter that matches nothing shows the empty-filter message.
+    none = client.get("/meetings?q=zzz-nomatch").text
+    assert "No meetings match" in none
+
+
 def test_delete_meeting(client, monkeypatch):
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")

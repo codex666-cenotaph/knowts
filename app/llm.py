@@ -135,9 +135,16 @@ class LLMClient:
     """OpenAI-compatible chat client (llama-swap). Generous timeouts for cold
     model swaps."""
 
-    def __init__(self, base_url: str, *, timeout: float = 60.0 * 20):
+    def __init__(
+        self, base_url: str, *, timeout: float = 60.0 * 20, max_retries: int = 2
+    ):
         # llama-swap ignores the key, but the SDK requires a non-empty string.
-        self._client = OpenAI(base_url=base_url, api_key="not-needed", timeout=timeout)
+        self._client = OpenAI(
+            base_url=base_url,
+            api_key="not-needed",
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     def list_models(self) -> list[str]:
         try:

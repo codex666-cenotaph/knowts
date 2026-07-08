@@ -130,6 +130,47 @@ def list_for_user(conn: sqlite3.Connection, user: User) -> list[Meeting]:
     return [_row_to_meeting(r) for r in rows]
 
 
+def search_for_user(
+    conn: sqlite3.Connection,
+    user: User,
+    *,
+    query: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[Meeting]:
+    """Archive listing with optional title search and meeting-date range
+    (PLAN.md §8.3). Ownership scoping matches ``list_for_user`` — members see
+    only their own meetings, admins see all.
+
+    The date range matches against ``meeting_date`` when set, otherwise the
+    creation date, so meetings without an explicit date still filter sensibly.
+    """
+    sql = (
+        "SELECT id, user_id, title, meeting_date, filename, duration_s, "
+        "status, created_at FROM meetings"
+    )
+    where: list[str] = []
+    params: list[object] = []
+    if not user.is_admin:
+        where.append("user_id = ?")
+        params.append(user.id)
+    if query:
+        where.append("title LIKE ?")
+        params.append(f"%{query}%")
+    effective_date = "COALESCE(meeting_date, substr(created_at, 1, 10))"
+    if date_from:
+        where.append(f"{effective_date} >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append(f"{effective_date} <= ?")
+        params.append(date_to)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC"
+    rows = conn.execute(sql, params).fetchall()
+    return [_row_to_meeting(r) for r in rows]
+
+
 def set_status(conn: sqlite3.Connection, meeting_id: int, status_value: str) -> None:
     conn.execute(
         "UPDATE meetings SET status = ? WHERE id = ?", (status_value, meeting_id)
@@ -227,25 +268,37 @@ def save_note(
     return cur.lastrowid
 
 
+def _row_to_note(r: sqlite3.Row) -> Note:
+    return Note(
+        id=r["id"],
+        meeting_id=r["meeting_id"],
+        prompt_version_id=r["prompt_version_id"],
+        model_used=r["model_used"],
+        markdown=r["markdown"],
+        created_at=r["created_at"],
+        prompt_name=r["prompt_name"],
+    )
+
+
+_NOTE_SELECT = (
+    "SELECT n.id, n.meeting_id, n.prompt_version_id, n.model_used, "
+    "       n.markdown, n.created_at, p.name AS prompt_name "
+    "FROM notes n "
+    "LEFT JOIN prompt_versions pv ON pv.id = n.prompt_version_id "
+    "LEFT JOIN prompts p ON p.id = pv.prompt_id "
+)
+
+
+def get_note(conn: sqlite3.Connection, note_id: int) -> Note | None:
+    row = conn.execute(
+        _NOTE_SELECT + "WHERE n.id = ?", (note_id,)
+    ).fetchone()
+    return _row_to_note(row) if row else None
+
+
 def list_notes(conn: sqlite3.Connection, meeting_id: int) -> list[Note]:
     rows = conn.execute(
-        "SELECT n.id, n.meeting_id, n.prompt_version_id, n.model_used, "
-        "       n.markdown, n.created_at, p.name AS prompt_name "
-        "FROM notes n "
-        "LEFT JOIN prompt_versions pv ON pv.id = n.prompt_version_id "
-        "LEFT JOIN prompts p ON p.id = pv.prompt_id "
-        "WHERE n.meeting_id = ? ORDER BY n.created_at, n.id",
+        _NOTE_SELECT + "WHERE n.meeting_id = ? ORDER BY n.created_at, n.id",
         (meeting_id,),
     ).fetchall()
-    return [
-        Note(
-            id=r["id"],
-            meeting_id=r["meeting_id"],
-            prompt_version_id=r["prompt_version_id"],
-            model_used=r["model_used"],
-            markdown=r["markdown"],
-            created_at=r["created_at"],
-            prompt_name=r["prompt_name"],
-        )
-        for r in rows
-    ]
+    return [_row_to_note(r) for r in rows]

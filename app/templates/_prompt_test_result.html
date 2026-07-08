@@ -1,0 +1,12 @@
+{# HTMX fragment: result of a prompt test run. #}
+{% if error %}
+<div class="flash flash-err">{{ error }}</div>
+{% elif rendered %}
+<article class="note test-note">
+  <header class="note-head">
+    <strong>Preview</strong>
+    {% if model_used %}<span class="muted">{{ model_used }}</span>{% endif %}
+  </header>
+  <div class="note-body">{{ rendered|safe }}</div>
+</article>
+{% endif %}
