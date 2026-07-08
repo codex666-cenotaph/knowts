@@ -10,8 +10,21 @@ llama-swap image for its unified build (which bundles `whisper.cpp`), add one
 whisper model, and add one config entry. Nothing here changes how the LLMs are
 served — existing model entries carry over untouched.
 
-> Run these commands on `link`. Placeholders in `UPPERCASE` (paths, container
-> name) must be replaced with your actual values — see step 1.
+> Run these commands on `link`. Confirmed values for the current setup (from
+> `docker inspect llama-swap`):
+>
+> | | value |
+> |---|---|
+> | `MODELS_DIR_HOST` | `/home/link/llm-host/models` (→ `/models`) |
+> | `CONFIG_HOST` | `/home/link/llm-host/llama-swap.yaml` |
+> | GPU device | `/dev/dri` (Vulkan, AMD) |
+> | Published port | `8080:8080` |
+>
+> ⚠️ **Config path changes with the image.** The legacy `:vulkan` image reads
+> config at `/app/config.yaml`; the **unified** image reads it at
+> `/etc/llama-swap/config/config.yaml`. When you swap the image (step 4) you
+> **must** change the config mount's destination to the new path, or llama-swap
+> starts with no config and `/v1/models` comes back empty.
 
 ---
 
@@ -57,8 +70,8 @@ than re-running `docker run`.
 VRAM). Drop to `medium` or `small` in step 3 if VRAM or speed disappoints.
 
 ```sh
-mkdir -p MODELS_DIR_HOST/whisper
-curl -L --fail -o MODELS_DIR_HOST/whisper/ggml-large-v3-turbo.bin \
+mkdir -p /home/link/llm-host/models/whisper
+curl -L --fail -o /home/link/llm-host/models/whisper/ggml-large-v3-turbo.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
 ```
 
@@ -85,29 +98,37 @@ LLMs on the shared GPU).
 
 ## Step 4 — Swap the image to the unified build
 
-Pick the path that matches step 1.
-
-**If `docker compose`:** edit the `image:` for the llama-swap service:
-
-```yaml
-    image: ghcr.io/mostlygeek/llama-swap:unified-vulkan   # was :vulkan
-```
-
-then:
-
-```sh
-docker compose pull llama-swap && docker compose up -d llama-swap
-```
-
-**If `docker run` / a launch script:** pull the new image, stop the old
-container, and re-run with the **same** flags but the new tag:
+The current container is `docker run`-managed (config bind-mounted to
+`/app/config.yaml`, models to `/models`, `/dev/dri` passed through). Pull the
+unified image, remove the old container, and re-run — changing **two** things:
+the image tag, and the config mount's destination path.
 
 ```sh
 docker pull ghcr.io/mostlygeek/llama-swap:unified-vulkan
 docker rm -f llama-swap
-# Re-run your existing invocation verbatim, changing ONLY the final image tag
-# from ...:vulkan to ...:unified-vulkan. Keep every -v, --device, -p, --restart.
+
+docker run -d --name llama-swap \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  --device /dev/dri \
+  -v /home/link/llm-host/llama-swap.yaml:/etc/llama-swap/config/config.yaml \
+  -v /home/link/llm-host/models:/models \
+  ghcr.io/mostlygeek/llama-swap:unified-vulkan
 ```
+
+Changed vs. the old container:
+- image tag `:vulkan` → `:unified-vulkan`
+- config destination `/app/config.yaml` → `/etc/llama-swap/config/config.yaml`
+
+Everything else (port, `/dev/dri`, models mount) is identical. If your original
+container used a different `--restart` policy or extra flags/env, match them —
+`docker inspect llama-swap` on the *old* container would have shown them; the
+essentials above are what's confirmed.
+
+> If this is actually compose-managed (check for
+> `/home/link/llm-host/docker-compose.yml`), edit the service's `image:` tag and
+> the config volume's destination there instead, then
+> `docker compose up -d llama-swap`.
 
 > Heads-up: this briefly restarts the endpoint that open-webui and hermes talk
 > to. Do it during a quiet moment.
