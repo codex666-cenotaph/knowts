@@ -60,10 +60,14 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   transcript snippet before saving.
 - **Profile language preference**: a language select (English/Dutch) on the
   profile page (`app/i18n.py`) switches the whole interface. Selecting Dutch
-  also makes note generation (and the prompt manager's test-run preview)
-  append a "respond only in Dutch" instruction to the system message,
-  overriding the starter prompts' default "same language as the transcript"
-  behavior — regardless of what language the meeting was actually held in.
+  also (a) makes note generation (and the prompt manager's test-run preview)
+  append a "respond only in Dutch" instruction to the system message, and
+  (b) pins the whisper transcription language to Dutch so a Dutch meeting is
+  transcribed in Dutch instead of whisper autodetecting and sometimes
+  returning an English transcript. Both override the starter prompts' default
+  "same language as the transcript" behavior. The STT language is configurable
+  with `STT_LANGUAGE` (empty = derive from the user's UI language, `auto` =
+  always autodetect, or a fixed ISO-639-1 code to pin one language).
 
 ## Run locally
 

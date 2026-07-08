@@ -56,6 +56,16 @@ class Settings(BaseSettings):
     llm_context_tokens: int = Field(default=32768, alias="LLM_CONTEXT_TOKENS")
     stt_base_url: str | None = Field(default=None, alias="STT_BASE_URL")
     stt_model: str = Field(default="whisper-large-v3-turbo", alias="STT_MODEL")
+    # Language hint sent to whisper (ISO-639-1, e.g. "nl"). Controls the
+    # transcription *source* language so whisper doesn't autodetect-and-guess
+    # (a Dutch meeting whose intro sounds English can otherwise come back
+    # transcribed as English). Three modes:
+    #   unset/empty  -> derive per meeting from the owner's UI language
+    #                   (non-English preference pins that language; English
+    #                   falls back to autodetect)
+    #   "auto"       -> always let whisper autodetect, ignore the preference
+    #   "<code>"     -> always pin this language for every transcription
+    stt_language: str | None = Field(default=None, alias="STT_LANGUAGE")
 
     @field_validator("data_dir", mode="before")
     @classmethod

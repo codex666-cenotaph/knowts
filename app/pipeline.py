@@ -31,6 +31,24 @@ def _audio_path(settings: Settings, filename: str) -> Path:
     return settings.audio_dir / filename
 
 
+def _stt_language(conn: sqlite3.Connection, settings: Settings, owner_id: int) -> str | None:
+    """Decide the language hint to send to whisper (see Settings.stt_language).
+
+    Returns ``None`` to let whisper autodetect. An explicit ``STT_LANGUAGE``
+    setting wins; otherwise a non-English UI preference on the meeting's owner
+    pins that language, and English falls back to autodetect.
+    """
+    configured = (settings.stt_language or "").strip().lower()
+    if configured == "auto":
+        return None
+    if configured:
+        return configured
+    owner = users_mod.get_by_id(conn, owner_id)
+    if owner and owner.language and owner.language != "en":
+        return owner.language
+    return None
+
+
 def process_meeting(conn: sqlite3.Connection, settings: Settings, meeting_id: int) -> None:
     meeting = meetings.get(conn, meeting_id)
     if meeting is None:
@@ -91,8 +109,11 @@ def _run_transcribe(
     transcriber = OpenAiCompatTranscriber(
         settings.effective_stt_base_url, settings.stt_model
     )
+    language = _stt_language(conn, settings, meeting.user_id)
     try:
-        result = transcriber.transcribe(wav, model=settings.stt_model)
+        result = transcriber.transcribe(
+            wav, model=settings.stt_model, language=language
+        )
     except TranscriptionError as exc:
         jobs.mark_error(conn, job_id, str(exc))
         log.error("transcription failed for meeting %d: %s", meeting_id, exc)

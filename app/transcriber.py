@@ -35,7 +35,9 @@ class TranscriptResult:
 
 
 class Transcriber(Protocol):
-    def transcribe(self, wav_path: Path, *, model: str | None = None) -> TranscriptResult:
+    def transcribe(
+        self, wav_path: Path, *, model: str | None = None, language: str | None = None
+    ) -> TranscriptResult:
         ...
 
 
@@ -63,12 +65,19 @@ class OpenAiCompatTranscriber:
     def endpoint(self) -> str:
         return f"{self._base_url}/audio/transcriptions"
 
-    def transcribe(self, wav_path: Path, *, model: str | None = None) -> TranscriptResult:
+    def transcribe(
+        self, wav_path: Path, *, model: str | None = None, language: str | None = None
+    ) -> TranscriptResult:
         model_name = model or self._default_model
         try:
             with open(wav_path, "rb") as fh:
                 files = {"file": (wav_path.name, fh, "audio/wav")}
                 data = {"model": model_name, "response_format": "verbose_json"}
+                # Pin the source language when known so whisper transcribes in
+                # that language instead of autodetecting (and sometimes guessing
+                # wrong, returning an English-translated transcript).
+                if language:
+                    data["language"] = language
                 resp = httpx.post(
                     self.endpoint, data=data, files=files, timeout=self._timeout
                 )

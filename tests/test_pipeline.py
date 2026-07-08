@@ -17,17 +17,20 @@ from app.transcriber import TranscriptResult
 
 
 class _FakeTranscriber:
+    last_language = None
+
     def __init__(self, *args, **kwargs):
         pass
 
-    def transcribe(self, wav_path, *, model=None):
+    def transcribe(self, wav_path, *, model=None, language=None):
+        _FakeTranscriber.last_language = language
         return TranscriptResult(
             text="hello world this is the meeting",
             segments=[
                 {"start": 0.0, "end": 1.5, "text": "hello world"},
                 {"start": 1.5, "end": 3.0, "text": "this is the meeting"},
             ],
-            language="en",
+            language=language or "en",
         )
 
 
@@ -110,7 +113,7 @@ def test_transcription_failure_marks_meeting_error(env, monkeypatch):
         def __init__(self, *a, **k):
             pass
 
-        def transcribe(self, wav_path, *, model=None):
+        def transcribe(self, wav_path, *, model=None, language=None):
             raise TranscriptionError("STT down")
 
     monkeypatch.setattr(pipeline, "OpenAiCompatTranscriber", _Boom)
@@ -131,6 +134,63 @@ def test_transcription_failure_marks_meeting_error(env, monkeypatch):
     assert tjob.status == jobs.STATUS_ERROR and "STT down" in tjob.error
     # Notes were never attempted (no transcript).
     assert meetings.list_notes(conn, meeting.id) == []
+
+
+def _transcribe_only(conn, settings, user):
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3"
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    jobs.create_transcribe_job(conn, meeting.id)
+    pipeline.process_meeting(conn, settings, meeting.id)
+    return meeting
+
+
+def test_stt_language_autodetects_for_english_owner(env):
+    settings, conn = env
+    _FakeTranscriber.last_language = None
+    user = _make_user(conn)  # default language 'en'
+    _transcribe_only(conn, settings, user)
+    # No hint sent -> whisper autodetects (current behavior for English users).
+    assert _FakeTranscriber.last_language is None
+
+
+def test_stt_language_pinned_from_dutch_owner_preference(env):
+    settings, conn = env
+    from app import users
+
+    _FakeTranscriber.last_language = None
+    user = _make_user(conn)
+    users.set_language(conn, user.id, "nl")
+    meeting = _transcribe_only(conn, settings, user)
+    # The Dutch preference pins the transcription language...
+    assert _FakeTranscriber.last_language == "nl"
+    # ...and the stored transcript reflects it instead of "english".
+    assert meetings.get_transcript(conn, meeting.id).language == "nl"
+
+
+def test_stt_language_explicit_setting_overrides_preference(env):
+    settings, conn = env
+    from app import users
+
+    settings.stt_language = "de"  # explicit config wins over any UI preference
+    _FakeTranscriber.last_language = None
+    user = _make_user(conn)
+    users.set_language(conn, user.id, "nl")
+    _transcribe_only(conn, settings, user)
+    assert _FakeTranscriber.last_language == "de"
+
+
+def test_stt_language_auto_ignores_preference(env):
+    settings, conn = env
+    from app import users
+
+    settings.stt_language = "auto"
+    _FakeTranscriber.last_language = None
+    user = _make_user(conn)
+    users.set_language(conn, user.id, "nl")
+    _transcribe_only(conn, settings, user)
+    assert _FakeTranscriber.last_language is None
 
 
 def test_notes_use_dutch_override_for_dutch_owner(env, monkeypatch):
