@@ -26,6 +26,7 @@ _NL: dict[str, str] = {
     "Prompts": "Prompts",
     "Users": "Gebruikers",
     "Profile": "Profiel",
+    "Menu": "Menu",
     "Sign out": "Uitloggen",
     "admin": "beheerder",
     "knowts v{version} · meeting MP3 → notes": "knowts v{version} · vergadering-mp3 → notities",

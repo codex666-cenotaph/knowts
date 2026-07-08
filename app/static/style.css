@@ -26,19 +26,51 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 1.25rem;
   padding: 0.75rem 1.25rem;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 .brand { font-weight: 700; font-size: 1.15rem; color: var(--text); }
-.topbar nav { display: flex; gap: 1rem; }
+.topbar-menu { display: flex; align-items: center; gap: 1.25rem; flex: 1 1 auto; }
+.topbar nav { display: flex; gap: 1rem; flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); }
 .topbar nav a:hover { color: var(--text); text-decoration: none; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
 .whoami { color: var(--muted); font-size: 0.9rem; }
+
+/* Hamburger toggle — visible only on narrow screens (see media query below).
+   The checkbox is visually hidden but stays keyboard-focusable; each page
+   load resets it, so the menu opens closed on mobile. */
+.nav-toggle { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.nav-burger { display: none; }
+
+@media (max-width: 640px) {
+  .topbar { gap: 0.75rem; }
+  .nav-burger {
+    display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    margin-left: auto; width: 42px; height: 36px; padding: 0 9px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); cursor: pointer;
+  }
+  .nav-burger span { display: block; height: 2px; background: var(--text); border-radius: 2px; }
+  .nav-toggle:focus ~ .nav-burger { outline: 2px solid var(--accent); }
+  .topbar-menu {
+    display: none; order: 3; flex-basis: 100%;
+    flex-direction: column; align-items: stretch; gap: 0.5rem;
+  }
+  .nav-toggle:checked ~ .topbar-menu { display: flex; }
+  .topbar nav { flex-direction: column; gap: 0.15rem; }
+  .topbar nav a { padding: 0.45rem 0.15rem; }
+  .topbar-right {
+    margin-left: 0; justify-content: space-between;
+    border-top: 1px solid var(--border); padding-top: 0.6rem;
+  }
+}
 
 .badge {
   display: inline-block;
