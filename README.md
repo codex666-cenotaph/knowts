@@ -3,7 +3,7 @@ convert meeting mp3 files to meeting notes on your own setup.
 
 See [PLAN.md](./PLAN.md) for the full design. Phase 0 (self-hosted whisper STT
 on the `link` machine) lives in [`deploy/`](./deploy/). This repo now also
-contains **Phase 1**: the application skeleton and authentication.
+contains **Phase 1** (skeleton + auth) and **Phase 2** (the pipeline core).
 
 ## What's here (Phase 1)
 
@@ -17,7 +17,34 @@ contains **Phase 1**: the application skeleton and authentication.
 - Pages: login/logout, home dashboard, profile (change own password), and
   admin → users (create, deactivate/reactivate, reset password).
 
-Upload, transcription, and note generation arrive in Phases 2–3.
+## What's here (Phase 2 — pipeline core)
+
+- **Upload → meeting**: authenticated MP3 (and other audio) upload with a size
+  guard; each upload creates a *meeting* that permanently groups the original
+  audio, its transcript, and every set of generated notes. Ownership is enforced
+  on every meeting route (members see only their own; admins see all).
+- **Jobs + worker**: a `transcribe` job and one `notes` job per selected prompt
+  are queued and run serially by a single in-process background worker
+  (`app/jobs.py`), so transcription and note generation never contend for the
+  shared GPU behind llama-swap. Interrupted jobs are re-queued on restart.
+- **Transcription**: ffmpeg converts audio to 16 kHz mono WAV (`app/audio.py`),
+  then `OpenAiCompatTranscriber` (`app/transcriber.py`) POSTs it to
+  `/v1/audio/transcriptions` (`verbose_json`) behind a small `Transcriber`
+  interface, so swapping STT backends is a new adapter, not a refactor.
+- **Notes**: the LLM client (`app/llm.py`) plus the notes generator
+  (`app/notes.py`) render each prompt against the transcript — single-shot when
+  it fits the context window, otherwise chunked map-reduce (segment-boundary
+  chunking with overlap, then a reduce/merge pass).
+- **Prompts**: the official starter set (`summary`, `action-items`, `decisions`,
+  `minutes`, `qa-highlights`) is seeded on first run; full prompt management UI
+  lands in Phase 3.
+- **Meeting UI**: upload page, meetings archive, and a detail page with an audio
+  player (HTTP range streaming), transcript panel with `.txt`/`.srt` download,
+  rendered Markdown notes, "generate more notes" against the stored transcript
+  (no re-transcription), live HTMX status polling, and delete.
+
+The polished archive/detail experience and the full prompt manager arrive in
+Phase 3.
 
 ## Run locally
 

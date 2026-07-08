@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting.title }} · knowts{% endblock %}
+{% block content %}
+<div class="meeting-header">
+  <div>
+    <h1>{{ meeting.title }}</h1>
+    <p class="muted">
+      {{ meeting.meeting_date or meeting.created_at[:10] }}
+      {% if meeting.duration_s %} · {{ (meeting.duration_s // 60)|int }}m {{ (meeting.duration_s % 60)|int }}s{% endif %}
+    </p>
+  </div>
+  <form method="post" action="/meetings/{{ meeting.id }}/delete" class="inline"
+        onsubmit="return confirm('Delete this meeting, its transcript and notes?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="linkbtn danger">Delete</button>
+  </form>
+</div>
+
+{% include "_meeting_status.html" %}
+
+{% if meeting.filename %}
+<section class="card">
+  <h3>Audio</h3>
+  <audio controls preload="none" src="/meetings/{{ meeting.id }}/audio"></audio>
+  <p><a href="/meetings/{{ meeting.id }}/audio" download>Download original</a></p>
+</section>
+{% endif %}
+
+{% if transcript %}
+<section class="card">
+  <details>
+    <summary><h3 class="inline-h3">Transcript</h3>
+      {% if transcript.language %}<span class="muted">({{ transcript.language }})</span>{% endif %}
+    </summary>
+    <p class="downloads">
+      <a href="/meetings/{{ meeting.id }}/transcript.txt">Download .txt</a>
+      {% if transcript.segments %}·
+        <a href="/meetings/{{ meeting.id }}/transcript.srt">Download .srt</a>
+      {% endif %}
+    </p>
+    {% if transcript.segments %}
+      <div class="segments">
+        {% for s in transcript.segments %}
+        <p><span class="ts">[{{ '%d:%02d'|format((s.start or 0)//60, (s.start or 0)%60) }}]</span>
+          {{ s.text }}</p>
+        {% endfor %}
+      </div>
+    {% else %}
+      <pre class="transcript-text">{{ transcript.text }}</pre>
+    {% endif %}
+  </details>
+</section>
+{% endif %}
+
+<section class="card">
+  <h3>Notes</h3>
+  {% if notes %}
+    {% for n in notes %}
+    <article class="note">
+      <header class="note-head">
+        <strong>{{ n.prompt_name or 'notes' }}</strong>
+        <span class="muted">{{ n.model_used or '' }} · {{ n.created_at[:16] }}</span>
+      </header>
+      <div class="note-body">{{ rendered_notes[n.id]|safe }}</div>
+    </article>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No notes generated yet.</p>
+  {% endif %}
+
+  {% if transcript %}
+  <details class="more-notes">
+    <summary>Generate more notes</summary>
+    <form method="post" action="/meetings/{{ meeting.id }}/notes">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <fieldset class="prompt-picker">
+        {% for p in prompts %}
+        <label class="check">
+          <input type="checkbox" name="prompt_ids" value="{{ p.id }}">
+          <span>{{ p.name }}{% if p.is_official %} <span class="badge">🔒</span>{% endif %}</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      <button type="submit" class="btn">Run</button>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endblock %}

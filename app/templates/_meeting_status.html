@@ -1,0 +1,22 @@
+{# HTMX polling fragment: meeting status + per-job progress. Stops polling once
+   no job is queued/running (PLAN.md §8.4). #}
+{% set active = meeting.status in ('processing', 'transcribing', 'generating') %}
+<div id="meeting-status"
+     {% if active %}hx-get="/meetings/{{ meeting.id }}/status"
+     hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
+  <p>Status: <span class="badge status-{{ meeting.status }}">{{ meeting.status }}</span>
+    {% if active %}<span class="spinner" aria-hidden="true"></span>{% endif %}
+  </p>
+  <ul class="jobs">
+    {% for j in jobs %}
+    <li>
+      <span class="badge status-{{ j.status }}">{{ j.status }}</span>
+      {{ j.kind }}{% if j.step %} · {{ j.step }}{% endif %}
+      {% if j.error %}<div class="flash flash-err">{{ j.error }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if not active %}
+  <p class="muted"><a href="/meetings/{{ meeting.id }}">Refresh to see results ↻</a></p>
+  {% endif %}
+</div>

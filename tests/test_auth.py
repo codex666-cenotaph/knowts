@@ -24,7 +24,9 @@ def test_login_and_access_home(client):
 
     home = client.get("/")
     assert home.status_code == 200
-    assert "Welcome, admin" in home.text
+    # Home is the upload page from Phase 2; the topbar greets the logged-in user.
+    assert "New meeting" in home.text
+    assert "admin" in home.text
 
 
 def test_login_wrong_password(client):

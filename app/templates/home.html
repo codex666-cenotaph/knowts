@@ -1,30 +1,59 @@
 {% extends "base.html" %}
-{% block title %}Home · knowts{% endblock %}
+{% block title %}Upload · knowts{% endblock %}
 {% block content %}
-<h1>Welcome, {{ user.username }}</h1>
-<p class="muted">
-  This is the knowts dashboard. Uploading meetings, transcription, and
-  note generation arrive in the next phases.
-</p>
+<h1>New meeting</h1>
+<p class="muted">Upload a meeting recording; knowts transcribes it and generates
+  notes with the prompts you pick.</p>
 
-<div class="cards">
-  <div class="card">
-    <h3>Meetings</h3>
-    <p class="muted">Your meeting archive will appear here (Phase 3).</p>
-  </div>
-  <div class="card">
-    <h3>Prompts</h3>
-    <p class="muted">Manage note-generation prompts (Phase 3).</p>
-  </div>
-  {% if user.is_admin %}
-  <div class="card">
-    <h3>Users</h3>
-    <p><a href="/admin/users">Manage users →</a></p>
-  </div>
-  {% endif %}
-  <div class="card">
-    <h3>Profile</h3>
-    <p><a href="/profile">Change your password →</a></p>
-  </div>
-</div>
+<form class="card upload-form" method="post" action="/meetings"
+      enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <label>Title
+    <input type="text" name="title" required placeholder="Weekly sync">
+  </label>
+
+  <label>Meeting date
+    <input type="date" name="meeting_date">
+  </label>
+
+  <label>Audio file
+    <input type="file" name="file" accept="audio/*,.mp3,.m4a,.wav,.mp4,.ogg,.flac"
+           required>
+  </label>
+
+  <fieldset class="prompt-picker">
+    <legend>Notes to generate</legend>
+    {% if prompts %}
+      {% for p in prompts %}
+      <label class="check">
+        <input type="checkbox" name="prompt_ids" value="{{ p.id }}"
+               {% if p.name == 'summary' %}checked{% endif %}>
+        <span>{{ p.name }}
+          {% if p.is_official %}<span class="badge" title="official">🔒</span>{% endif %}
+        </span>
+        {% if p.description %}<small class="muted">{{ p.description }}</small>{% endif %}
+      </label>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No prompts available.</p>
+    {% endif %}
+  </fieldset>
+
+  <button type="submit" class="btn">Upload &amp; process</button>
+</form>
+
+{% if recent %}
+<h2>Recent meetings</h2>
+<ul class="recent">
+  {% for m in recent %}
+  <li>
+    <a href="/meetings/{{ m.id }}">{{ m.title }}</a>
+    <span class="badge status-{{ m.status }}">{{ m.status }}</span>
+    <span class="muted">{{ m.meeting_date or m.created_at[:10] }}</span>
+  </li>
+  {% endfor %}
+</ul>
+<p><a href="/meetings">All meetings →</a></p>
+{% endif %}
 {% endblock %}

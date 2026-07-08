@@ -20,10 +20,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__
 from . import db as db_mod
+from . import prompts as prompts_mod
 from .bootstrap import bootstrap_admin
 from .config import get_settings
+from .jobs import PipelineWorker
 from .rate_limit import LoginRateLimiter
-from .routers import admin_users, auth_routes, home, profile
+from .routers import admin_users, auth_routes, home, meetings, profile
 from .templating import render
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI):
     log.info("Database ready at %s (schema v%d)", settings.db_path, version)
 
     bootstrap_admin(conn, settings)
+    prompts_mod.seed_starter_prompts(conn)
 
     app.state.settings = settings
     app.state.db = conn
@@ -49,9 +52,16 @@ async def lifespan(app: FastAPI):
         max_attempts=settings.login_max_attempts,
         lockout_seconds=settings.login_lockout_seconds,
     )
+
+    worker = PipelineWorker(settings)
+    worker.start()
+    await worker.recover_and_resume()
+    app.state.worker = worker
+
     try:
         yield
     finally:
+        await worker.stop()
         conn.close()
 
 
@@ -61,6 +71,7 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 app.include_router(auth_routes.router)
 app.include_router(home.router)
+app.include_router(meetings.router)
 app.include_router(profile.router)
 app.include_router(admin_users.router)
 

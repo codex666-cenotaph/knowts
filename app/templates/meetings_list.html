@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Meetings · knowts{% endblock %}
+{% block content %}
+<h1>Meetings</h1>
+{% if items %}
+<table class="table">
+  <thead>
+    <tr><th>Title</th><th>Date</th><th>Duration</th><th>Status</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    {% for it in items %}
+    {% set m = it.meeting %}
+    <tr>
+      <td><a href="/meetings/{{ m.id }}">{{ m.title }}</a></td>
+      <td>{{ m.meeting_date or m.created_at[:10] }}</td>
+      <td>{% if m.duration_s %}{{ (m.duration_s // 60)|int }}m {{ (m.duration_s % 60)|int }}s{% else %}—{% endif %}</td>
+      <td><span class="badge status-{{ m.status }}">{{ m.status }}</span></td>
+      <td>{{ it.notes }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No meetings yet. <a href="/">Upload one →</a></p>
+{% endif %}
+{% endblock %}
