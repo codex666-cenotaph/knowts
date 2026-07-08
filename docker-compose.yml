@@ -1,0 +1,26 @@
+# knowts — runs alongside llama-swap on the link machine (PLAN.md §9).
+services:
+  knowts:
+    build: .
+    image: knowts:latest
+    container_name: knowts
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      # --- required in any real deployment ---
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY to a random 32+ byte string}"
+      ADMIN_USER: "${ADMIN_USER:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      # --- upstreams (Phase 2+) ---
+      LLM_BASE_URL: "${LLM_BASE_URL:-http://link:8080/v1}"
+      LLM_DEFAULT_MODEL: "${LLM_DEFAULT_MODEL:-qwen2.5-32b}"
+      LLM_CONTEXT_TOKENS: "${LLM_CONTEXT_TOKENS:-32768}"
+      STT_BASE_URL: "${STT_BASE_URL:-http://link:8080/v1}"
+      STT_MODEL: "${STT_MODEL:-whisper-large-v3-turbo}"
+      # --- tunables ---
+      MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-500}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      DATA_DIR: /data

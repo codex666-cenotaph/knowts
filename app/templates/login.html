@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sign in · knowts{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>knowts</h1>
+  <p class="muted">Sign in to convert meeting recordings into notes.</p>
+
+  {% if error %}<div class="flash flash-err">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Username
+      <input type="text" name="username" value="{{ username or '' }}" autocomplete="username" autofocus required>
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="primary">Sign in</button>
+  </form>
+</div>
+{% endblock %}

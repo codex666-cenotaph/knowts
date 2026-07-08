@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Profile · knowts{% endblock %}
+{% block content %}
+<h1>Profile</h1>
+<p class="muted">Signed in as <strong>{{ user.username }}</strong> ({{ user.role }}).</p>
+
+<section class="panel">
+  <h2>Change password</h2>
+  <form method="post" action="/profile/password" class="stack narrow">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Current password
+      <input type="password" name="current_password" autocomplete="current-password" required>
+    </label>
+    <label>New password
+      <input type="password" name="new_password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>Confirm new password
+      <input type="password" name="confirm_password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <button type="submit" class="primary">Update password</button>
+  </form>
+</section>
+{% endblock %}

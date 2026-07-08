@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Users · knowts{% endblock %}
+{% block content %}
+<h1>Users</h1>
+
+<section class="panel">
+  <h2>Create user</h2>
+  <form method="post" action="/admin/users/create" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="username" placeholder="username" autocomplete="off" required>
+    <input type="password" name="password" placeholder="password" autocomplete="new-password" minlength="8" required>
+    <select name="role">
+      <option value="member">member</option>
+      <option value="admin">admin</option>
+    </select>
+    <button type="submit" class="primary">Create</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>All users</h2>
+  <table class="grid">
+    <thead>
+      <tr><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="{{ 'inactive' if not u.active else '' }}">
+        <td>{{ u.username }}{% if u.id == user.id %} <span class="badge">you</span>{% endif %}</td>
+        <td>{{ u.role }}</td>
+        <td>{{ 'active' if u.active else 'inactive' }}</td>
+        <td class="muted">{{ u.created_at }}</td>
+        <td class="actions">
+          {% if u.id != user.id %}
+          <form method="post" action="/admin/users/{{ u.id }}/active" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="active" value="{{ '0' if u.active else '1' }}">
+            <button type="submit" class="linkbtn">{{ 'Deactivate' if u.active else 'Reactivate' }}</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/admin/users/{{ u.id }}/password" class="inline reset-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="password" name="password" placeholder="new password" minlength="8" required>
+            <button type="submit" class="linkbtn">Reset</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
