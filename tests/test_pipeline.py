@@ -136,9 +136,10 @@ def test_transcription_failure_marks_meeting_error(env, monkeypatch):
     assert meetings.list_notes(conn, meeting.id) == []
 
 
-def _transcribe_only(conn, settings, user):
+def _transcribe_only(conn, settings, user, *, language="auto"):
     meeting = meetings.create(
-        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3"
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3",
+        language=language,
     )
     (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
     jobs.create_transcribe_job(conn, meeting.id)
@@ -146,56 +147,46 @@ def _transcribe_only(conn, settings, user):
     return meeting
 
 
-def test_stt_language_autodetects_for_english_owner(env):
+def test_stt_language_autodetects_when_meeting_is_auto(env):
     settings, conn = env
     _FakeTranscriber.last_language = None
-    user = _make_user(conn)  # default language 'en'
-    _transcribe_only(conn, settings, user)
-    # No hint sent -> whisper autodetects (current behavior for English users).
+    user = _make_user(conn)
+    _transcribe_only(conn, settings, user, language="auto")
+    # No hint sent -> whisper autodetects.
     assert _FakeTranscriber.last_language is None
 
 
-def test_stt_language_pinned_from_dutch_owner_preference(env):
+def test_stt_language_pinned_from_meeting_choice(env):
     settings, conn = env
-    from app import users
-
     _FakeTranscriber.last_language = None
     user = _make_user(conn)
-    users.set_language(conn, user.id, "nl")
-    meeting = _transcribe_only(conn, settings, user)
-    # The Dutch preference pins the transcription language...
+    meeting = _transcribe_only(conn, settings, user, language="nl")
+    # The meeting's chosen language pins transcription...
     assert _FakeTranscriber.last_language == "nl"
     # ...and the stored transcript reflects it instead of "english".
     assert meetings.get_transcript(conn, meeting.id).language == "nl"
 
 
-def test_stt_language_explicit_setting_overrides_preference(env):
+def test_stt_language_explicit_setting_overrides_meeting_choice(env):
     settings, conn = env
-    from app import users
-
-    settings.stt_language = "de"  # explicit config wins over any UI preference
+    settings.stt_language = "de"  # deployment-wide pin wins over the meeting choice
     _FakeTranscriber.last_language = None
     user = _make_user(conn)
-    users.set_language(conn, user.id, "nl")
-    _transcribe_only(conn, settings, user)
+    _transcribe_only(conn, settings, user, language="nl")
     assert _FakeTranscriber.last_language == "de"
 
 
-def test_stt_language_auto_ignores_preference(env):
+def test_stt_language_auto_setting_ignores_meeting_choice(env):
     settings, conn = env
-    from app import users
-
     settings.stt_language = "auto"
     _FakeTranscriber.last_language = None
     user = _make_user(conn)
-    users.set_language(conn, user.id, "nl")
-    _transcribe_only(conn, settings, user)
+    _transcribe_only(conn, settings, user, language="nl")
     assert _FakeTranscriber.last_language is None
 
 
-def test_notes_use_dutch_override_for_dutch_owner(env, monkeypatch):
+def test_notes_use_dutch_override_for_dutch_meeting(env, monkeypatch):
     settings, conn = env
-    from app import users
 
     captured_systems = []
 
@@ -209,11 +200,10 @@ def test_notes_use_dutch_override_for_dutch_owner(env, monkeypatch):
 
     monkeypatch.setattr(pipeline, "LLMClient", _CapturingLLM)
 
-    owner = users.create(conn, "marieke", "marspass123", "member")
-    users.set_language(conn, owner.id, "nl")
-
+    user = _make_user(conn)
     meeting = meetings.create(
-        conn, user_id=owner.id, title="Sync", meeting_date=None, filename="1.mp3"
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3",
+        language="nl",
     )
     (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
     summary = next(p for p in prompts.list_active(conn) if p.name == "summary")

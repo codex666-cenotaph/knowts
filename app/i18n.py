@@ -38,6 +38,9 @@ _NL: dict[str, str] = {
     "Meeting date": "Vergaderdatum",
     "Audio file": "Audiobestand",
     "Notes to generate": "Te genereren notities",
+    "Auto-detect": "Automatisch detecteren",
+    "Transcription and notes use this language. Auto-detect lets whisper guess.":
+        "Transcriptie en notities gebruiken deze taal. Automatisch detecteren laat whisper raden.",
     "No prompts available.": "Geen prompts beschikbaar.",
     "Upload & process": "Uploaden & verwerken",
     "Recent meetings": "Recente vergaderingen",

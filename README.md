@@ -59,15 +59,19 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   placeholder validation, and a **test-run** that previews a prompt against a
   transcript snippet before saving.
 - **Profile language preference**: a language select (English/Dutch) on the
-  profile page (`app/i18n.py`) switches the whole interface. Selecting Dutch
-  also (a) makes note generation (and the prompt manager's test-run preview)
-  append a "respond only in Dutch" instruction to the system message, and
-  (b) pins the whisper transcription language to Dutch so a Dutch meeting is
-  transcribed in Dutch instead of whisper autodetecting and sometimes
-  returning an English transcript. Both override the starter prompts' default
-  "same language as the transcript" behavior. The STT language is configurable
-  with `STT_LANGUAGE` (empty = derive from the user's UI language, `auto` =
-  always autodetect, or a fixed ISO-639-1 code to pin one language).
+  profile page (`app/i18n.py`) switches the whole interface, and becomes the
+  default for the per-meeting language picker below.
+- **Per-meeting language**: the upload page has a language dropdown (English /
+  Dutch / Auto-detect) defaulting to the user's interface language. The chosen
+  language (a) pins the whisper transcription language so a Dutch meeting is
+  transcribed in Dutch instead of whisper autodetecting and sometimes returning
+  an English transcript, and (b) makes note generation (and the prompt
+  manager's test-run preview) append a "respond only in `<language>`"
+  instruction — overriding the starter prompts' default "same language as the
+  transcript" behavior. Auto-detect leaves both to the model/transcript.
+  A deployment can still force one STT language for everyone with `STT_LANGUAGE`
+  (`auto` = always autodetect, or a fixed ISO-639-1 code), which overrides the
+  per-meeting choice.
 
 ## Run locally
 

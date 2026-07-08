@@ -18,7 +18,6 @@ import sqlite3
 from pathlib import Path
 
 from . import audio, jobs, meetings, notes, prompts
-from . import users as users_mod
 from .audio import AudioError
 from .config import Settings
 from .llm import LLMClient, LLMError
@@ -31,21 +30,22 @@ def _audio_path(settings: Settings, filename: str) -> Path:
     return settings.audio_dir / filename
 
 
-def _stt_language(conn: sqlite3.Connection, settings: Settings, owner_id: int) -> str | None:
-    """Decide the language hint to send to whisper (see Settings.stt_language).
+def _stt_language(settings: Settings, meeting: meetings.Meeting) -> str | None:
+    """Decide the language hint to send to whisper.
 
-    Returns ``None`` to let whisper autodetect. An explicit ``STT_LANGUAGE``
-    setting wins; otherwise a non-English UI preference on the meeting's owner
-    pins that language, and English falls back to autodetect.
+    Returns ``None`` to let whisper autodetect. A deployment-wide
+    ``STT_LANGUAGE`` setting wins (a fixed code pins it for everyone, "auto"
+    forces autodetect); otherwise the per-meeting language chosen at upload
+    applies, with "auto" meaning autodetect.
     """
     configured = (settings.stt_language or "").strip().lower()
     if configured == "auto":
         return None
     if configured:
         return configured
-    owner = users_mod.get_by_id(conn, owner_id)
-    if owner and owner.language and owner.language != "en":
-        return owner.language
+    language = (meeting.language or "").strip().lower()
+    if language and language != "auto":
+        return language
     return None
 
 
@@ -109,7 +109,7 @@ def _run_transcribe(
     transcriber = OpenAiCompatTranscriber(
         settings.effective_stt_base_url, settings.stt_model
     )
-    language = _stt_language(conn, settings, meeting.user_id)
+    language = _stt_language(settings, meeting)
     try:
         result = transcriber.transcribe(
             wav, model=settings.stt_model, language=language
@@ -151,8 +151,10 @@ def _run_notes(
 
     jobs.mark_running(conn, job.id, step=f"notes:{prompt.name}")
     meeting = meetings.get(conn, job.meeting_id)
-    owner = users_mod.get_by_id(conn, meeting.user_id) if meeting else None
-    language_override = owner.language if owner and owner.language != "en" else None
+    # The meeting's chosen language forces the notes language (e.g. "nl" ->
+    # respond only in Dutch); "auto"/"en" leave the model to match the
+    # transcript, so they pass through as no-ops in notes.generate.
+    language_override = meeting.language if meeting else None
     try:
         markdown, model_used = notes.generate(
             client,

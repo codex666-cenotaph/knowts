@@ -21,6 +21,7 @@ from .. import jobs as jobs_mod
 from .. import meetings as meetings_mod
 from .. import prompts as prompts_mod
 from ..config import Settings, get_settings
+from ..i18n import SUPPORTED_LANGUAGES
 from ..templating import render
 from ..users import User
 
@@ -85,6 +86,7 @@ async def upload(
     request: Request,
     title: str = Form(...),
     meeting_date: str = Form(""),
+    language: str = Form(""),
     prompt_ids: list[int] = Form(default=[]),
     csrf_token: str = Form(...),
     file: UploadFile = File(...),
@@ -107,6 +109,12 @@ async def upload(
     if ext not in _ALLOWED_EXT:
         return fail("Unsupported+audio+format.")
 
+    # Meeting language: the picked value, else fall back to the user's own
+    # interface language, else autodetect. "auto" is always valid.
+    language = language.strip().lower()
+    if language != "auto" and language not in SUPPORTED_LANGUAGES:
+        language = user.language if user.language in SUPPORTED_LANGUAGES else "auto"
+
     # Create the meeting first so the stored file can be named by its id
     # (PLAN.md §7: /data/audio/<meeting_id>.<ext>).
     meeting = meetings_mod.create(
@@ -115,6 +123,7 @@ async def upload(
         title=title,
         meeting_date=meeting_date.strip() or None,
         filename=None,
+        language=language,
     )
     filename = f"{meeting.id}{ext}"
     dest = _audio_file(settings, filename)

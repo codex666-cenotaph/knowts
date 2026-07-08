@@ -120,6 +120,12 @@ MIGRATIONS: list[tuple[int, str]] = [
         ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en';
         """,
     ),
+    (
+        4,
+        """
+        ALTER TABLE meetings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto';
+        """,
+    ),
 ]
 
 

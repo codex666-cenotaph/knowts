@@ -36,6 +36,9 @@ class Meeting:
     duration_s: float | None
     status: str
     created_at: str
+    # Transcription/notes language chosen at upload: an ISO-639-1 code
+    # (e.g. "en", "nl") or "auto" to let whisper autodetect.
+    language: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -68,7 +71,14 @@ def _row_to_meeting(row: sqlite3.Row) -> Meeting:
         duration_s=row["duration_s"],
         status=row["status"],
         created_at=row["created_at"],
+        language=row["language"],
     )
+
+
+_MEETING_COLUMNS = (
+    "id, user_id, title, meeting_date, filename, duration_s, status, "
+    "created_at, language"
+)
 
 
 # --- Meetings ------------------------------------------------------------
@@ -81,11 +91,12 @@ def create(
     title: str,
     meeting_date: str | None,
     filename: str | None,
+    language: str = "auto",
 ) -> Meeting:
     cur = conn.execute(
-        "INSERT INTO meetings (user_id, title, meeting_date, filename, status) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (user_id, title, meeting_date, filename, STATUS_PROCESSING),
+        "INSERT INTO meetings (user_id, title, meeting_date, filename, status, language) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, title, meeting_date, filename, STATUS_PROCESSING, language),
     )
     conn.commit()
     meeting = get(conn, cur.lastrowid)
@@ -95,8 +106,7 @@ def create(
 
 def get(conn: sqlite3.Connection, meeting_id: int) -> Meeting | None:
     row = conn.execute(
-        "SELECT id, user_id, title, meeting_date, filename, duration_s, status, "
-        "created_at FROM meetings WHERE id = ?",
+        f"SELECT {_MEETING_COLUMNS} FROM meetings WHERE id = ?",
         (meeting_id,),
     ).fetchone()
     return _row_to_meeting(row) if row else None
@@ -117,13 +127,11 @@ def get_owned(conn: sqlite3.Connection, meeting_id: int, user: User) -> Meeting:
 def list_for_user(conn: sqlite3.Connection, user: User) -> list[Meeting]:
     if user.is_admin:
         rows = conn.execute(
-            "SELECT id, user_id, title, meeting_date, filename, duration_s, "
-            "status, created_at FROM meetings ORDER BY created_at DESC"
+            f"SELECT {_MEETING_COLUMNS} FROM meetings ORDER BY created_at DESC"
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT id, user_id, title, meeting_date, filename, duration_s, "
-            "status, created_at FROM meetings WHERE user_id = ? "
+            f"SELECT {_MEETING_COLUMNS} FROM meetings WHERE user_id = ? "
             "ORDER BY created_at DESC",
             (user.id,),
         ).fetchall()
@@ -145,10 +153,7 @@ def search_for_user(
     The date range matches against ``meeting_date`` when set, otherwise the
     creation date, so meetings without an explicit date still filter sensibly.
     """
-    sql = (
-        "SELECT id, user_id, title, meeting_date, filename, duration_s, "
-        "status, created_at FROM meetings"
-    )
+    sql = f"SELECT {_MEETING_COLUMNS} FROM meetings"
     where: list[str] = []
     params: list[object] = []
     if not user.is_admin:

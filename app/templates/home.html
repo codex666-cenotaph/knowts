@@ -16,6 +16,16 @@
     <input type="date" name="meeting_date">
   </label>
 
+  <label>{{ t('Language') }}
+    <select name="language">
+      {% for code, label in languages.items() %}
+      <option value="{{ code }}" {% if code == user.language %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+      <option value="auto" {% if user.language not in languages %}selected{% endif %}>{{ t('Auto-detect') }}</option>
+    </select>
+    <small class="muted">{{ t('Transcription and notes use this language. Auto-detect lets whisper guess.') }}</small>
+  </label>
+
   <label>{{ t('Audio file') }}
     <input type="file" name="file" accept="audio/*,.mp3,.m4a,.wav,.mp4,.ogg,.flac"
            required>

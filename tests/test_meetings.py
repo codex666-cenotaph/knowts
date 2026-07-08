@@ -16,7 +16,7 @@ def _stub_pipeline(monkeypatch):
     monkeypatch.setattr(pipeline, "process_meeting", lambda *a, **k: None)
 
 
-def _upload(client, csrf, *, title="Team sync", prompt_ids=("1",), filename="m.mp3"):
+def _upload(client, csrf, *, title="Team sync", prompt_ids=("1",), filename="m.mp3", language=None):
     # httpx encodes a dict value that is a list as repeated form fields; a
     # list-of-tuples `data=` with `files=` does NOT round-trip through multipart.
     data = {
@@ -25,6 +25,8 @@ def _upload(client, csrf, *, title="Team sync", prompt_ids=("1",), filename="m.m
         "csrf_token": csrf,
         "prompt_ids": list(prompt_ids),
     }
+    if language is not None:
+        data["language"] = language
     return client.post(
         "/meetings",
         data=data,
@@ -51,6 +53,41 @@ def test_upload_creates_meeting_and_jobs(client, monkeypatch):
     assert "Team sync" in detail.text
     # A transcribe job and at least one notes job were queued.
     assert "transcribe" in detail.text
+
+
+def test_upload_form_has_language_select_defaulting_to_user_language(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    # Admin defaults to English.
+    html = client.get("/").text
+    assert 'name="language"' in html
+    assert '<option value="en" selected>' in html
+    assert 'value="auto"' in html
+
+
+def test_upload_stores_chosen_language(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf, language="nl").headers["location"]
+    meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
+    conn = client.app.state.db
+    assert meetings_mod.get(conn, meeting_id).language == "nl"
+
+
+def test_upload_defaults_language_to_user_preference(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    # No language field submitted -> falls back to the user's language (en).
+    loc = _upload(client, csrf).headers["location"]
+    meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
+    conn = client.app.state.db
+    assert meetings_mod.get(conn, meeting_id).language == "en"
 
 
 def test_upload_rejects_bad_extension(client, monkeypatch):
