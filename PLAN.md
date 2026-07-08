@@ -2,8 +2,9 @@
 
 Convert meeting MP3 files into structured meeting notes using self-hosted services:
 
-- **faster-whisper** (running on the link machine, Wyoming protocol — see §5) — speech-to-text
-- **llama-swap** (already running on the link machine) — OpenAI-compatible LLM API with on-demand model swapping
+- **whisper STT** — deployed on link's AMD GPU **as part of this project** (the
+  old faster-whisper/Wyoming container is being removed — see §5)
+- **llama-swap** (already running on the link machine) — OpenAI-compatible API with on-demand model swapping
 - **knowts** (this project) — a full web application in its own Docker container with
   user login, prompt management, and a per-meeting archive that groups the original
   MP3, the transcription, and the LLM-generated notes together
@@ -21,9 +22,10 @@ Convert meeting MP3 files into structured meeting notes using self-hosted servic
 │  FastAPI backend                                                         │
 │    ├── Auth (session cookies, password hashing, user management)         │
 │    ├── Job queue (async, in-process)                                     │
-│    ├── ffmpeg: MP3 ─► 16 kHz mono PCM/WAV                                │
-│    ├── Transcription client (Wyoming) ─────► faster-whisper (link)       │
-│    ├── Notes generator (DB-backed prompts) ─► llama-swap  (link machine) │
+│    ├── ffmpeg: MP3 ─► 16 kHz mono WAV                                    │
+│    ├── STT client (/v1/audio/transcriptions) ──┐                         │
+│    ├── Notes generator (/v1/chat/completions) ─┴► llama-swap (link:8080) │
+│    │      (llama-swap swaps whisper.cpp and LLM models on the AMD GPU)   │
 │    └── SQLite + file storage (volume-mounted /data)                      │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -43,8 +45,8 @@ prompts can be run against a stored transcript at any time without re-transcribi
 
 1. Logged-in user uploads an MP3, gives it a title/date, selects one or more prompts.
 2. Backend stores the file, creates the meeting + job, returns immediately.
-3. Worker converts audio with ffmpeg to the format faster-whisper expects (16 kHz, mono, 16-bit PCM).
-4. Worker streams audio to faster-whisper over the Wyoming protocol and stores the transcript.
+3. Worker converts audio with ffmpeg to 16 kHz mono WAV (whisper.cpp's expected input).
+4. Worker POSTs it to `/v1/audio/transcriptions` (`response_format=verbose_json`) and stores the transcript with timestamped segments.
 5. Worker runs each selected prompt against the transcript via llama-swap's
    `/v1/chat/completions`. Long transcripts are chunked (map-reduce: per-chunk pass,
    then merge).
@@ -126,50 +128,55 @@ Plus ownership fields: `owner_id` (`NULL` = official/admin-owned) and `read_only
 - Starter set seeded on first run: `summary`, `action-items`, `decisions`,
   `minutes`, `qa-highlights` (editable like any other prompt).
 
-## 5. Integration contracts (link machine)
+## 5. Speech-to-text deployment + integration contracts (link machine)
 
-Confirmed state of link per `docker ps` (2026-07-08): llama-swap
-(`ghcr.io/mostlygeek/llama-swap:vulkan`) published on `0.0.0.0:8080`;
-**faster-whisper** (`lscr.io/linuxserver/faster-whisper:latest`) up, exposing
-`10300/tcp` (docker-network-only, not published to the host); also running:
-piper TTS (:10200), open-webui (:3001), nginx workspace-web (:8090),
-hermes-agent and homey-mcp (loopback-only).
+The old `lscr.io/linuxserver/faster-whisper` (Wyoming) container is being
+removed. **Deploying its replacement on link's AMD GPU is in scope for this
+project.** Current relevant state of link: llama-swap
+(`ghcr.io/mostlygeek/llama-swap:vulkan`) published on `0.0.0.0:8080`.
 
-### llama-swap — CONFIRMED
-`http://link:8080/v1`, OpenAI-compatible endpoints: `/v1/chat/completions`,
-`/v1/models`. Published on `0.0.0.0`, so it's reachable from the knowts container
-whether knowts runs on link or another host. knowts will:
-- read the base URL from `LLM_BASE_URL` (default `http://link:8080/v1`)
-- populate model dropdowns from `/v1/models`
-- use generous HTTP timeouts (model swap + cold load can take a while)
+### Recommended: whisper.cpp managed by llama-swap (one endpoint for everything)
 
-### faster-whisper — CONFIRMED, speaks the Wyoming protocol
-`lscr.io/linuxserver/faster-whisper` is a **Wyoming protocol** server on port
-10300 — a TCP protocol (newline-delimited JSON events + binary audio payloads),
-not an HTTP API. The transcription flow is: connect, send `transcribe`,
-`audio-start`, stream `audio-chunk`s (16 kHz mono int16 PCM), send `audio-stop`,
-receive a `transcript` event with the text. The `wyoming` Python package provides
-an async client.
+llama-swap supports routing `/v1/audio/transcriptions` by model name, and the
+project publishes a **unified image** ("llama-server, ik-llama-server,
+stable-diffusion.cpp, whisper.cpp and llama-swap built from source", available
+for CUDA **and Vulkan** — exact tag to confirm at deploy time, e.g.
+`ghcr.io/mostlygeek/llama-swap:unified-vulkan`). whisper.cpp's Vulkan backend
+runs on the same AMD GPU llama-swap already uses.
 
-**Default adapter: `WyomingTranscriber`** (ffmpeg decodes the MP3 → PCM, streamed
-over the Wyoming connection). An `OpenAiCompatTranscriber`
-(`POST /v1/audio/transcriptions`) is kept behind the same interface, selected via
-`TRANSCRIBER_KIND=wyoming | openai-compat`, in case the STT backend ever changes.
+Deployment = swap the llama-swap container to the unified image (existing config
+and models carry over), add a whisper model entry to `llama-swap.yaml` that
+launches `whisper-server`, and drop a ggml whisper model (e.g.
+`large-v3-turbo`) into the models volume. Benefits:
 
-**Two consequences to be aware of:**
-1. **Networking**: `10300/tcp` is not published to the host. Either add
-   `-p 10300:10300` to the faster-whisper container, or attach knowts to the same
-   docker network (compose: `external` network reference) — the plan assumes the
-   docker-network route since knowts runs on link; the port-publish route is the
-   fallback if knowts moves elsewhere.
-2. **No timestamps**: Wyoming's `transcript` event returns plain text only — no
-   per-segment timestamps. The transcript panel and exports degrade gracefully
-   (plain `.txt`; the `.srt` export and per-segment timestamps only appear when a
-   backend provides segments). Chunking for long transcripts falls back to
-   paragraph/sentence boundaries instead of segment boundaries.
+- **One upstream for knowts**: `http://link:8080/v1` serves both
+  `/v1/audio/transcriptions` (model = the whisper entry) and
+  `/v1/chat/completions` (notes prompts) — one client, one base URL.
+- **GPU arbitration for free**: llama-swap loads/unloads whisper and the LLM on
+  demand, so they never fight over VRAM; `groups`/`ttl` config tunes this.
+- **Timestamps**: `response_format=verbose_json` returns per-segment timestamps,
+  so the transcript panel gets timestamped segments and `.srt` export.
 
-If the whisper service is down when a meeting is uploaded, the job queues and the
-UI says transcription is waiting on the service.
+### Alternatives (kept in the plan in case the unified image disappoints)
+
+- **A — standalone whisper.cpp Vulkan container**: build/run `whisper-server`
+  in its own container publishing e.g. `:8081`; knowts points `STT_BASE_URL` at
+  it. Same API, but GPU sharing with llama-swap must be managed manually.
+- **B — CPU-only faster-whisper (e.g. `speaches`)**: no GPU dependency at all;
+  OpenAI-compatible; fine for occasional meetings but roughly real-time-or-slower
+  on long recordings.
+
+### Contracts knowts codes against
+
+- **STT**: `POST {STT_BASE_URL}/audio/transcriptions` (multipart file +
+  `model` + `response_format=verbose_json`) → text + segments. Implemented as
+  `OpenAiCompatTranscriber` behind a small transcriber interface (so a future
+  backend swap is a new adapter, not a refactor).
+- **LLM**: `POST {LLM_BASE_URL}/chat/completions`; models listed from
+  `/v1/models`. Generous timeouts everywhere — model swap + cold load takes a
+  while, and transcribing a one-hour meeting is minutes, not seconds.
+- If the STT service is down when a meeting is uploaded, the job queues and the
+  UI says transcription is waiting on the service.
 
 ## 6. Long-transcript handling
 
@@ -213,9 +220,8 @@ confirmation step); nothing else in v1 deletes data.
 4. **Meeting detail** — the grouped view, one page per meeting:
    - header: title, date, duration, status;
    - **audio player** for the original MP3 (HTTP range requests for seeking) + download;
-   - **transcript** panel: collapsible, copy/download as `.txt` (timestamped
-     segments and `.srt` export appear when the STT backend provides segments —
-     Wyoming returns plain text only);
+   - **transcript** panel: collapsible, timestamped segments, copy/download as
+     `.txt`/`.srt`;
    - **notes** tabs: one tab per generated note set, labelled with prompt name +
      model; rendered Markdown with copy and `.md` download;
    - **"Generate more notes"**: pick further prompts and run them against the stored
@@ -231,8 +237,8 @@ confirmation step); nothing else in v1 deletes data.
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `WHISPER_URL` | `tcp://faster-whisper:10300` | Wyoming endpoint (container name on the shared docker network, or `tcp://link:10300` if the port gets published) |
-| `TRANSCRIBER_KIND` | `wyoming` | adapter selection (`wyoming` or `openai-compat`) |
+| `STT_BASE_URL` | `http://link:8080/v1` | transcription endpoint (defaults to `LLM_BASE_URL`) |
+| `STT_MODEL` | `whisper-large-v3-turbo` | model name of the whisper entry in llama-swap |
 | `LLM_BASE_URL` | `http://link:8080/v1` | llama-swap OpenAI-compatible base |
 | `LLM_DEFAULT_MODEL` | `qwen2.5-32b` | model when a prompt doesn't pin one |
 | `LLM_CONTEXT_TOKENS` | `32768` | chunking threshold |
@@ -242,16 +248,16 @@ confirmation step); nothing else in v1 deletes data.
 | `DATA_DIR` | `/data` | storage root |
 
 `docker-compose.yml` mounts `./data:/data` and publishes the UI port (default
-`8000`). The compose file also joins the docker network the faster-whisper
-container lives on (external network reference) so `faster-whisper:10300` is
-reachable. No GPU needed in this container — the heavy lifting stays on the
-link machine.
+`8000`). No GPU needed in this container — the heavy lifting stays on the
+link machine behind llama-swap.
 
 ## 10. Execution steps
 
-**Phase 0 — Verify contracts (blocker for everything else)**
-1. Sort out reachability of faster-whisper (join its docker network or publish `10300`); run a Wyoming `describe`/`transcribe` round-trip with a short test clip to confirm model, language handling, and transcript shape.
-2. Hit llama-swap `/v1/models`; record base URL, available model names, and rough context sizes.
+**Phase 0 — Deploy whisper STT on link (in scope, blocker for the pipeline)**
+1. Remove the old faster-whisper (Wyoming) container.
+2. Confirm the unified llama-swap image tag with whisper.cpp + Vulkan support; switch the llama-swap container to it (existing config and model entries carry over).
+3. Download a ggml whisper model (start with `large-v3-turbo`; drop to `medium`/`small` if VRAM or speed disappoints) into the models volume; add a `whisper-server` model entry to `llama-swap.yaml`, in an appropriate `group`/`ttl` so it swaps cleanly against the LLMs.
+4. Verify with `curl`: `/v1/models` lists the whisper entry and the LLMs; `/v1/audio/transcriptions` with a short test clip returns `verbose_json` with segments; an existing LLM still answers `/v1/chat/completions`. Fall back to alternative A (standalone whisper.cpp container) or B (CPU faster-whisper) if the unified image doesn't pan out.
 
 **Phase 1 — Skeleton + auth**
 3. Scaffold FastAPI app, Jinja2/HTMX layout, settings module (pydantic-settings), SQLite schema/migrations.
@@ -260,8 +266,8 @@ link machine.
 
 **Phase 2 — Pipeline core**
 6. Upload endpoint + file storage; meeting + job models with status transitions; ownership enforcement on every meeting route.
-7. ffmpeg conversion helper (MP3 → 16 kHz mono PCM/WAV) with duration probe.
-8. Transcriber adapters (Wyoming first, OpenAI-compat second) behind the common interface; integration-test against the real faster-whisper container.
+7. ffmpeg conversion helper (MP3 → 16 kHz mono WAV) with duration probe.
+8. `OpenAiCompatTranscriber` behind the transcriber interface; integration-test against the whisper entry deployed in Phase 0.
 9. Prompt tables + seeding of the starter set; notes generator: single-shot path, then chunked map-reduce path; integration-test against llama-swap.
 
 **Phase 3 — Full UI**
@@ -278,13 +284,14 @@ link machine.
 
 ## 11. Open questions / assumptions
 
-- **faster-whisper reachability** — port `10300` is not published to the host;
-  Phase 0 either joins knowts to the faster-whisper docker network (assumed) or
-  the container gets `-p 10300:10300`. llama-swap is confirmed at
-  `http://link:8080/v1`.
-- **No transcript timestamps via Wyoming** — accepted for v1; timestamped
-  segments/`.srt` come back automatically if the STT backend is ever switched to
-  one that returns segments (e.g. an OpenAI-compatible whisper server).
+- **Unified image tag** — the llama-swap README documents a unified build
+  (whisper.cpp included) for CUDA and Vulkan but the exact Vulkan tag needs
+  confirming against the registry at deploy time; alternatives A/B are the
+  fallback. llama-swap itself is confirmed at `http://link:8080/v1`.
+- **Whisper model size** — starting with `large-v3-turbo` (ggml); Phase 0
+  measures speed/VRAM on the AMD GPU and steps down if needed.
+- **Swapping the llama-swap image** briefly interrupts anything else using it
+  (open-webui, hermes) — worth a quiet moment on link.
 - **Personal prompt visibility** — assumed personal prompts are also visible/usable
   workspace-wide (only *editing* is restricted to the owner). Flip to
   private-to-owner if that's the intent of "personal".
