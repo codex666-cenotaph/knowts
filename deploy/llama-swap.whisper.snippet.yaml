@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# whisper STT entry for llama-swap — Phase 0
+#
+# MERGE this into your existing llama-swap.yaml on `link`. Add the model under
+# your existing `models:` map; do NOT replace the file. Requires the unified
+# image (ghcr.io/mostlygeek/llama-swap:unified-vulkan), which bundles
+# whisper.cpp's `whisper-server`.
+#
+# How the pieces line up:
+#   - knowts POSTs multipart to  http://link:8080/v1/audio/transcriptions
+#     with form field  model=whisper-large-v3-turbo
+#   - llama-swap reads that `model` field, starts this upstream on ${PORT},
+#     and proxies the request to the upstream's SAME path.
+#   - whisper-server serves `/inference` by default; `--inference-path
+#     /v1/audio/transcriptions` makes it serve the OpenAI path so the proxy
+#     target matches.
+# ---------------------------------------------------------------------------
+
+models:
+  # ... your existing LLM entries stay here, unchanged ...
+
+  whisper-large-v3-turbo:
+    # The unified image installs binaries in /usr/local/bin (the plain :vulkan
+    # image used /app). Confirm with:
+    #   docker exec llama-swap command -v whisper-server
+    cmd: |
+      /usr/local/bin/whisper-server
+      --host 127.0.0.1
+      --port ${PORT}
+      --model /models/whisper/ggml-large-v3-turbo.bin
+      --inference-path /v1/audio/transcriptions
+      --threads 8
+    proxy: http://127.0.0.1:${PORT}
+    # Unload after 5 min idle so the LLM can reclaim VRAM between meetings.
+    ttl: 300
+
+# ---------------------------------------------------------------------------
+# GPU sharing (VRAM) — pick ONE approach:
+#
+# (a) DEFAULT / SIMPLEST — do nothing extra. llama-swap loads one model at a
+#     time and swaps automatically, so whisper and the LLMs never contend for
+#     VRAM. The knowts pipeline is sequential (transcribe, THEN summarize), so
+#     this is the natural fit.
+#
+# (b) EXPLICIT GROUP — if your config already uses `groups`, add the whisper
+#     model as a member of the exclusive group your LLMs are in, so loading it
+#     unloads them and vice-versa:
+#
+#       groups:
+#         gpu:
+#           swap: true
+#           exclusive: true
+#           members:
+#             - your-existing-llm
+#             - whisper-large-v3-turbo
+#
+# (c) CO-RESIDENT — only if you want whisper + a small LLM loaded at once and
+#     have the VRAM: put whisper in its own non-exclusive/persistent group.
+#     Not needed for the v1 sequential pipeline.
+# ---------------------------------------------------------------------------
