@@ -2,8 +2,8 @@
 
 Convert meeting MP3 files into structured meeting notes using self-hosted services:
 
-- **whisperflow** (to run on the lync machine; not in the current `docker ps` — see §5) — speech-to-text
-- **llama-swap** (already running on the lync machine) — OpenAI-compatible LLM API with on-demand model swapping
+- **faster-whisper** (running on the link machine, Wyoming protocol — see §5) — speech-to-text
+- **llama-swap** (already running on the link machine) — OpenAI-compatible LLM API with on-demand model swapping
 - **knowts** (this project) — a full web application in its own Docker container with
   user login, prompt management, and a per-meeting archive that groups the original
   MP3, the transcription, and the LLM-generated notes together
@@ -22,8 +22,8 @@ Convert meeting MP3 files into structured meeting notes using self-hosted servic
 │    ├── Auth (session cookies, password hashing, user management)         │
 │    ├── Job queue (async, in-process)                                     │
 │    ├── ffmpeg: MP3 ─► 16 kHz mono PCM/WAV                                │
-│    ├── Transcription client  ───────────────► whisperflow (lync machine) │
-│    ├── Notes generator (DB-backed prompts) ─► llama-swap  (lync machine) │
+│    ├── Transcription client (Wyoming) ─────► faster-whisper (link)       │
+│    ├── Notes generator (DB-backed prompts) ─► llama-swap  (link machine) │
 │    └── SQLite + file storage (volume-mounted /data)                      │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -43,8 +43,8 @@ prompts can be run against a stored transcript at any time without re-transcribi
 
 1. Logged-in user uploads an MP3, gives it a title/date, selects one or more prompts.
 2. Backend stores the file, creates the meeting + job, returns immediately.
-3. Worker converts audio with ffmpeg to the format whisperflow expects (16 kHz, mono, 16-bit PCM).
-4. Worker sends audio to whisperflow and stores the transcript (with timestamps if available).
+3. Worker converts audio with ffmpeg to the format faster-whisper expects (16 kHz, mono, 16-bit PCM).
+4. Worker streams audio to faster-whisper over the Wyoming protocol and stores the transcript.
 5. Worker runs each selected prompt against the transcript via llama-swap's
    `/v1/chat/completions`. Long transcripts are chunked (map-reduce: per-chunk pass,
    then merge).
@@ -126,43 +126,57 @@ Plus ownership fields: `owner_id` (`NULL` = official/admin-owned) and `read_only
 - Starter set seeded on first run: `summary`, `action-items`, `decisions`,
   `minutes`, `qa-highlights` (editable like any other prompt).
 
-## 5. Integration contracts (lync machine)
+## 5. Integration contracts (link machine)
 
-Current state of lync per `docker ps` (2026-07-08): llama-swap
-(`ghcr.io/mostlygeek/llama-swap:vulkan`) is up and published on `0.0.0.0:8080`;
-also running: open-webui (:3001), nginx workspace-web (:8090), hermes-agent and
-homey-mcp (loopback-only). **No whisper/STT container is currently running.**
+Confirmed state of link per `docker ps` (2026-07-08): llama-swap
+(`ghcr.io/mostlygeek/llama-swap:vulkan`) published on `0.0.0.0:8080`;
+**faster-whisper** (`lscr.io/linuxserver/faster-whisper:latest`) up, exposing
+`10300/tcp` (docker-network-only, not published to the host); also running:
+piper TTS (:10200), open-webui (:3001), nginx workspace-web (:8090),
+hermes-agent and homey-mcp (loopback-only).
 
 ### llama-swap — CONFIRMED
-`http://lync:8080/v1`, OpenAI-compatible endpoints: `/v1/chat/completions`,
+`http://link:8080/v1`, OpenAI-compatible endpoints: `/v1/chat/completions`,
 `/v1/models`. Published on `0.0.0.0`, so it's reachable from the knowts container
-whether knowts runs on lync or another host. knowts will:
-- read the base URL from `LLM_BASE_URL` (default `http://lync:8080/v1`)
+whether knowts runs on link or another host. knowts will:
+- read the base URL from `LLM_BASE_URL` (default `http://link:8080/v1`)
 - populate model dropdowns from `/v1/models`
 - use generous HTTP timeouts (model swap + cold load can take a while)
 
-### whisperflow — NOT RUNNING YET (prerequisite)
-No whisperflow container appears in the `docker ps` output, so it must be
-(re)started before Phase 0 can verify its contract — or it lives on a different
-machine, in which case knowts just needs its URL. Depending on the image used,
-the contract is one of:
-1. **WS streaming** (dimastatz whisper-flow): WebSocket at `/ws` (default port
-   8181), 16 kHz mono int16 PCM chunks in, incremental segments out; `/health`
-   for liveness.
-2. **OpenAI-compatible batch**: POST the file to `/v1/audio/transcriptions`
-   (several whisper server images expose this).
+### faster-whisper — CONFIRMED, speaks the Wyoming protocol
+`lscr.io/linuxserver/faster-whisper` is a **Wyoming protocol** server on port
+10300 — a TCP protocol (newline-delimited JSON events + binary audio payloads),
+not an HTTP API. The transcription flow is: connect, send `transcribe`,
+`audio-start`, stream `audio-chunk`s (16 kHz mono int16 PCM), send `audio-stop`,
+receive a `transcript` event with the text. The `wyoming` Python package provides
+an async client.
 
-knowts implements both behind a **transcriber adapter interface**
-(`WhisperFlowWsTranscriber`, `OpenAiCompatTranscriber`), selected via
-`TRANSCRIBER_KIND=whisperflow-ws | openai-compat`, so whichever container ends up
-running is supported. If the whisperflow service is down when a meeting is
-uploaded, the job queues and the UI says transcription is waiting on the service.
+**Default adapter: `WyomingTranscriber`** (ffmpeg decodes the MP3 → PCM, streamed
+over the Wyoming connection). An `OpenAiCompatTranscriber`
+(`POST /v1/audio/transcriptions`) is kept behind the same interface, selected via
+`TRANSCRIBER_KIND=wyoming | openai-compat`, in case the STT backend ever changes.
+
+**Two consequences to be aware of:**
+1. **Networking**: `10300/tcp` is not published to the host. Either add
+   `-p 10300:10300` to the faster-whisper container, or attach knowts to the same
+   docker network (compose: `external` network reference) — the plan assumes the
+   docker-network route since knowts runs on link; the port-publish route is the
+   fallback if knowts moves elsewhere.
+2. **No timestamps**: Wyoming's `transcript` event returns plain text only — no
+   per-segment timestamps. The transcript panel and exports degrade gracefully
+   (plain `.txt`; the `.srt` export and per-segment timestamps only appear when a
+   backend provides segments). Chunking for long transcripts falls back to
+   paragraph/sentence boundaries instead of segment boundaries.
+
+If the whisper service is down when a meeting is uploaded, the job queues and the
+UI says transcription is waiting on the service.
 
 ## 6. Long-transcript handling
 
 - Estimate tokens (chars/4 heuristic); if the transcript fits within
   `LLM_CONTEXT_TOKENS` minus prompt/response headroom → single call.
-- Otherwise split on segment boundaries into overlapping chunks, run the prompt's
+- Otherwise split into overlapping chunks (on segment boundaries when the backend
+  provides them, else on paragraph/sentence boundaries), run the prompt's
   `template` per chunk, then merge with `reduce_template` (or a generic merge
   prompt if the prompt doesn't define one).
 
@@ -199,7 +213,9 @@ confirmation step); nothing else in v1 deletes data.
 4. **Meeting detail** — the grouped view, one page per meeting:
    - header: title, date, duration, status;
    - **audio player** for the original MP3 (HTTP range requests for seeking) + download;
-   - **transcript** panel: collapsible, timestamped segments, copy/download as `.txt`/`.srt`;
+   - **transcript** panel: collapsible, copy/download as `.txt` (timestamped
+     segments and `.srt` export appear when the STT backend provides segments —
+     Wyoming returns plain text only);
    - **notes** tabs: one tab per generated note set, labelled with prompt name +
      model; rendered Markdown with copy and `.md` download;
    - **"Generate more notes"**: pick further prompts and run them against the stored
@@ -215,9 +231,9 @@ confirmation step); nothing else in v1 deletes data.
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `WHISPER_URL` | `ws://lync:8181/ws` or `http://lync:8181` | whisperflow endpoint |
-| `TRANSCRIBER_KIND` | `whisperflow-ws` | adapter selection |
-| `LLM_BASE_URL` | `http://lync:8080/v1` | llama-swap OpenAI-compatible base |
+| `WHISPER_URL` | `tcp://faster-whisper:10300` | Wyoming endpoint (container name on the shared docker network, or `tcp://link:10300` if the port gets published) |
+| `TRANSCRIBER_KIND` | `wyoming` | adapter selection (`wyoming` or `openai-compat`) |
+| `LLM_BASE_URL` | `http://link:8080/v1` | llama-swap OpenAI-compatible base |
 | `LLM_DEFAULT_MODEL` | `qwen2.5-32b` | model when a prompt doesn't pin one |
 | `LLM_CONTEXT_TOKENS` | `32768` | chunking threshold |
 | `SECRET_KEY` | random 32+ bytes | session cookie signing |
@@ -226,13 +242,15 @@ confirmation step); nothing else in v1 deletes data.
 | `DATA_DIR` | `/data` | storage root |
 
 `docker-compose.yml` mounts `./data:/data` and publishes the UI port (default
-`8000`). No GPU needed in this container — the heavy lifting stays on the lync
-machine.
+`8000`). The compose file also joins the docker network the faster-whisper
+container lives on (external network reference) so `faster-whisper:10300` is
+reachable. No GPU needed in this container — the heavy lifting stays on the
+link machine.
 
 ## 10. Execution steps
 
 **Phase 0 — Verify contracts (blocker for everything else)**
-1. Probe the running whisperflow container (`/health`, try `/v1/audio/transcriptions`, try WS `/ws`) and record the actual API shape, port, and audio format expectations.
+1. Sort out reachability of faster-whisper (join its docker network or publish `10300`); run a Wyoming `describe`/`transcribe` round-trip with a short test clip to confirm model, language handling, and transcript shape.
 2. Hit llama-swap `/v1/models`; record base URL, available model names, and rough context sizes.
 
 **Phase 1 — Skeleton + auth**
@@ -243,7 +261,7 @@ machine.
 **Phase 2 — Pipeline core**
 6. Upload endpoint + file storage; meeting + job models with status transitions; ownership enforcement on every meeting route.
 7. ffmpeg conversion helper (MP3 → 16 kHz mono PCM/WAV) with duration probe.
-8. Transcriber adapters (WS streaming first, OpenAI-compat second) behind the common interface; integration-test against the real whisperflow.
+8. Transcriber adapters (Wyoming first, OpenAI-compat second) behind the common interface; integration-test against the real faster-whisper container.
 9. Prompt tables + seeding of the starter set; notes generator: single-shot path, then chunked map-reduce path; integration-test against llama-swap.
 
 **Phase 3 — Full UI**
@@ -255,20 +273,23 @@ machine.
 **Phase 4 — Hardening & docs**
 14. Error handling everywhere it can fail: unreachable services, transcription failures, LLM timeouts (llama-swap cold-start), oversized uploads — surfaced in the UI with retry.
 15. Concurrency guard (limit to N concurrent transcriptions; queue the rest).
-16. README: setup, env vars, first-run admin bootstrap, docker-compose example wired to the lync machine.
+16. README: setup, env vars, first-run admin bootstrap, docker-compose example wired to the link machine.
 17. Optional stretch goals: per-meeting sharing between users, SSE live transcript preview during transcription, speaker diarization (if the whisper backend supports it), Obsidian/Notion-friendly export, tags on meetings.
 
 ## 11. Open questions / assumptions
 
-- **whisperflow is not running yet** (confirmed absent from lync's `docker ps`,
-  2026-07-08) — it must be started (image + port TBD), or its URL provided if it
-  lives elsewhere. Phase 0 verifies its API shape and picks the right adapter.
-  llama-swap is confirmed at `http://lync:8080/v1`.
+- **faster-whisper reachability** — port `10300` is not published to the host;
+  Phase 0 either joins knowts to the faster-whisper docker network (assumed) or
+  the container gets `-p 10300:10300`. llama-swap is confirmed at
+  `http://link:8080/v1`.
+- **No transcript timestamps via Wyoming** — accepted for v1; timestamped
+  segments/`.srt` come back automatically if the STT backend is ever switched to
+  one that returns segments (e.g. an OpenAI-compatible whisper server).
 - **Personal prompt visibility** — assumed personal prompts are also visible/usable
   workspace-wide (only *editing* is restricted to the owner). Flip to
   private-to-owner if that's the intent of "personal".
-- **Where knowts runs** — assumed on lync alongside the other containers; nothing
-  depends on it as long as lync:8080 (and the whisper port) are reachable.
+- **Where knowts runs** — assumed on link alongside the other containers; nothing
+  depends on it as long as link:8080 and the whisper endpoint are reachable.
 - **Meeting visibility** — private per user (admins see all); a share toggle is a stretch goal.
 - **Diarization** — not assumed; notes prompts work without speaker labels but benefit from them if present.
 - **One MP3 = one meeting** — no multi-file merge in v1.
