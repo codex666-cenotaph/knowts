@@ -17,7 +17,7 @@ fi
 pass() { printf '  \033[32mPASS\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; exit 1; }
 need() { command -v "$1" >/dev/null || { echo "missing dependency: $1" >&2; exit 1; }; }
-need curl; need ffmpeg; need jq
+need curl; need jq
 
 echo "1. /v1/models lists whisper + LLMs"
 MODELS_JSON="$(curl -fsS "$BASE/v1/models")"
@@ -26,20 +26,25 @@ echo "$MODELS_JSON" | jq -e --arg m "$WHISPER_MODEL" '.data[] | select(.id==$m)'
   || fail "whisper entry '$WHISPER_MODEL' NOT in /v1/models"
 echo "$MODELS_JSON" | jq -r '.data[].id' | sed 's/^/       - /'
 
-echo "2. /v1/audio/transcriptions transcribes a test clip"
+echo "2. /v1/audio/transcriptions transcribes a sample clip"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-# Generate ~2s of a spoken-frequency tone as a valid 16 kHz mono wav. Whisper
-# won't produce meaningful words from a tone, but a 200 + JSON body with a
-# "text" field proves the endpoint, model load, and audio decode all work.
-ffmpeg -nostdin -loglevel error -f lavfi -i "sine=frequency=220:duration=2" \
-  -ar 16000 -ac 1 "$TMP/test.wav"
+# Use whisper.cpp's bundled jfk.wav (16 kHz mono real speech) — a correct
+# transcript proves the model actually decodes audio, not just that the
+# endpoint returns 200. Override with SAMPLE_WAV=/path/to/a.wav (e.g. offline).
+SAMPLE_WAV="${SAMPLE_WAV:-}"
+if [[ -z "$SAMPLE_WAV" ]]; then
+  curl -fsSL -o "$TMP/jfk.wav" \
+    https://raw.githubusercontent.com/ggml-org/whisper.cpp/master/samples/jfk.wav \
+    || fail "couldn't fetch sample clip; set SAMPLE_WAV=/path/to/a.wav and re-run"
+  SAMPLE_WAV="$TMP/jfk.wav"
+fi
 STT_JSON="$(curl -fsS "$BASE/v1/audio/transcriptions" \
   -F "model=$WHISPER_MODEL" \
-  -F "file=@$TMP/test.wav" \
+  -F "file=@$SAMPLE_WAV" \
   -F "response_format=verbose_json")"
-echo "$STT_JSON" | jq -e 'has("text")' >/dev/null \
-  && pass "transcription endpoint returned a text field" \
-  || fail "no text field in transcription response: $STT_JSON"
+echo "$STT_JSON" | jq -e '(.text // "") | gsub("^\\s+|\\s+$";"") | length > 0' >/dev/null \
+  && pass "transcribed: $(echo "$STT_JSON" | jq -r '.text' | tr -s '[:space:]' ' ' | sed 's/^ //' | head -c 90)" \
+  || fail "no/empty text in transcription response: $STT_JSON"
 if echo "$STT_JSON" | jq -e '.segments and (.segments|length>0)' >/dev/null 2>&1; then
   pass "verbose_json includes segments (timestamps available)"
 else

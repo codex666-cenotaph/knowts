@@ -20,11 +20,11 @@ models:
   # ... your existing LLM entries stay here, unchanged ...
 
   whisper-large-v3-turbo:
-    # `whisper-server` is assumed to be on PATH in the unified image. If a
-    # `docker run --rm <image> which whisper-server` shows an absolute path,
-    # use that instead.
+    # The unified image installs binaries in /usr/local/bin (the plain :vulkan
+    # image used /app). Confirm with:
+    #   docker exec llama-swap command -v whisper-server
     cmd: |
-      whisper-server
+      /usr/local/bin/whisper-server
       --host 127.0.0.1
       --port ${PORT}
       --model /models/whisper/ggml-large-v3-turbo.bin

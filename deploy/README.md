@@ -94,6 +94,21 @@ Do **not** replace your config — add the one entry (and, optionally, adjust
 `groups`/`ttl` as the snippet describes so whisper swaps cleanly against the
 LLMs on the shared GPU).
 
+> ⚠️ **Repath your existing LLM `cmd` entries too.** The plain `:vulkan` image
+> installed binaries under `/app` (`/app/llama-server`); the **unified** image
+> installs them under `/usr/local/bin`. Existing entries that call
+> `/app/llama-server` will fail with `fork/exec /app/llama-server: no such file
+> or directory` under the unified image. Fix every entry:
+>
+> ```sh
+> cd ~/llm-host
+> cp llama-swap.yaml llama-swap.yaml.bak
+> sed -i 's#/app/llama-server#/usr/local/bin/llama-server#g' llama-swap.yaml
+> ```
+>
+> Confirm the path for your image with
+> `docker exec llama-swap command -v llama-server whisper-server`.
+
 ---
 
 ## Step 4 — Swap the image to the unified build
@@ -137,16 +152,20 @@ essentials above are what's confirmed.
 
 ## Step 5 — Verify
 
-Run the verification script (edit the two variables at the top first):
+Run the verification script (set `LLM_MODEL` to one of your existing model
+names). Needs only `curl` and `jq` on `link` — it fetches a sample clip over
+HTTP, so no ffmpeg/audio tooling required:
 
 ```sh
-./verify-stt.sh
+LLM_MODEL=<your-llm-model-id> ./verify-stt.sh
 ```
 
 It checks, against `http://localhost:8080`:
 1. `/v1/models` lists both the whisper entry and your existing LLMs.
-2. `/v1/audio/transcriptions` transcribes a generated test clip and returns text.
-3. An existing LLM still answers `/v1/chat/completions` (proves the swap works).
+2. `/v1/audio/transcriptions` transcribes whisper.cpp's `jfk.wav` sample and
+   returns real text (proves the model decodes speech, not just a 200).
+3. An existing LLM answers `/v1/chat/completions` (proves the binary-path
+   repath and image swap work end-to-end).
 
 Green on all three = Phase 0 done; knowts can point `STT_BASE_URL` and
 `LLM_BASE_URL` at `http://link:8080/v1`.
