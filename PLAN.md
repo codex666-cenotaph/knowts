@@ -2,8 +2,8 @@
 
 Convert meeting MP3 files into structured meeting notes using self-hosted services:
 
-- **whisperflow** (already running on the link machine) — speech-to-text
-- **llama-swap** (already running on the link machine) — OpenAI-compatible LLM API with on-demand model swapping
+- **whisperflow** (to run on the lync machine; not in the current `docker ps` — see §5) — speech-to-text
+- **llama-swap** (already running on the lync machine) — OpenAI-compatible LLM API with on-demand model swapping
 - **knowts** (this project) — a full web application in its own Docker container with
   user login, prompt management, and a per-meeting archive that groups the original
   MP3, the transcription, and the LLM-generated notes together
@@ -22,8 +22,8 @@ Convert meeting MP3 files into structured meeting notes using self-hosted servic
 │    ├── Auth (session cookies, password hashing, user management)         │
 │    ├── Job queue (async, in-process)                                     │
 │    ├── ffmpeg: MP3 ─► 16 kHz mono PCM/WAV                                │
-│    ├── Transcription client  ───────────────► whisperflow (link machine) │
-│    ├── Notes generator (DB-backed prompts) ─► llama-swap  (link machine) │
+│    ├── Transcription client  ───────────────► whisperflow (lync machine) │
+│    ├── Notes generator (DB-backed prompts) ─► llama-swap  (lync machine) │
 │    └── SQLite + file storage (volume-mounted /data)                      │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -84,6 +84,18 @@ prompts can be run against a stored transcript at any time without re-transcribi
 Prompts live in the database and are managed entirely through the web UI — no
 container rebuilds, no volume edits.
 
+**Sharing & ownership model:**
+- All prompts are **visible and usable workspace-wide** — any user can select any
+  prompt when generating notes.
+- **Official prompts** (admin-created, read-only): only admins can create or edit
+  them. They form the curated library everyone relies on. Members cannot modify
+  them but can **clone** any official prompt into a personal copy.
+- **Personal prompts**: created from scratch or by cloning; owned by a user and
+  editable only by that owner (and admins). A clone records which official prompt
+  (and version) it came from.
+- The prompt picker and manager badge each prompt as `official` (lock icon) or
+  `personal` (owner shown), with clone available on everything.
+
 **Prompt fields:**
 
 | Field | Purpose |
@@ -96,9 +108,15 @@ container rebuilds, no volume edits.
 | `temperature`, `max_tokens` | optional generation params |
 | `archived` | archived prompts are hidden from the picker but past notes keep their reference |
 
+Plus ownership fields: `owner_id` (`NULL` = official/admin-owned) and `read_only`
+(true for official prompts), and `cloned_from_version_id` on clones.
+
 **Prompt manager UI:**
-- List with search; create / edit / duplicate / archive (no hard delete once used —
-  existing notes must keep a valid reference).
+- List with search, badged official vs. personal; create / edit / **clone** /
+  archive (no hard delete once used — existing notes must keep a valid reference).
+- Edit is enforced server-side: official prompts are editable by admins only;
+  personal prompts by their owner or an admin. Clone is available to everyone on
+  every prompt.
 - Edit form with placeholder validation (`{transcript}` must be present) and a model
   dropdown populated live from llama-swap's `/v1/models`.
 - **Test run**: paste (or pick from an existing meeting) a transcript snippet and
@@ -108,29 +126,37 @@ container rebuilds, no volume edits.
 - Starter set seeded on first run: `summary`, `action-items`, `decisions`,
   `minutes`, `qa-highlights` (editable like any other prompt).
 
-## 5. Integration contracts (to verify against the live instances)
+## 5. Integration contracts (lync machine)
 
-### llama-swap
-Standard OpenAI-compatible endpoints: `/v1/chat/completions`, `/v1/models`. The
-`model` field selects which model llama-swap loads/routes to. knowts will:
-- read the base URL from `LLM_BASE_URL` (e.g. `http://link:8080/v1`)
+Current state of lync per `docker ps` (2026-07-08): llama-swap
+(`ghcr.io/mostlygeek/llama-swap:vulkan`) is up and published on `0.0.0.0:8080`;
+also running: open-webui (:3001), nginx workspace-web (:8090), hermes-agent and
+homey-mcp (loopback-only). **No whisper/STT container is currently running.**
+
+### llama-swap — CONFIRMED
+`http://lync:8080/v1`, OpenAI-compatible endpoints: `/v1/chat/completions`,
+`/v1/models`. Published on `0.0.0.0`, so it's reachable from the knowts container
+whether knowts runs on lync or another host. knowts will:
+- read the base URL from `LLM_BASE_URL` (default `http://lync:8080/v1`)
 - populate model dropdowns from `/v1/models`
 - use generous HTTP timeouts (model swap + cold load can take a while)
 
-### whisperflow
-The open-source whisper-flow server is **streaming-first**: WebSocket at `/ws`
-(default port 8181), accepting 16 kHz mono int16 PCM chunks and returning
-incremental transcript segments; `/health` for liveness.
+### whisperflow — NOT RUNNING YET (prerequisite)
+No whisperflow container appears in the `docker ps` output, so it must be
+(re)started before Phase 0 can verify its contract — or it lives on a different
+machine, in which case knowts just needs its URL. Depending on the image used,
+the contract is one of:
+1. **WS streaming** (dimastatz whisper-flow): WebSocket at `/ws` (default port
+   8181), 16 kHz mono int16 PCM chunks in, incremental segments out; `/health`
+   for liveness.
+2. **OpenAI-compatible batch**: POST the file to `/v1/audio/transcriptions`
+   (several whisper server images expose this).
 
-knowts will use a small **transcriber adapter interface** with two implementations:
-1. `WhisperFlowWsTranscriber` — decode the MP3 with ffmpeg to raw PCM, stream it
-   in chunks over the WebSocket, collect segments until EOF. (Default.)
-2. `OpenAiCompatTranscriber` — POST the file to `/v1/audio/transcriptions`, for
-   the case where the running container actually exposes a batch endpoint
-   (several whisper server images do).
-
-Selected via `TRANSCRIBER_KIND=whisperflow-ws | openai-compat`. **First execution
-step is to probe the real container and confirm which contract applies.**
+knowts implements both behind a **transcriber adapter interface**
+(`WhisperFlowWsTranscriber`, `OpenAiCompatTranscriber`), selected via
+`TRANSCRIBER_KIND=whisperflow-ws | openai-compat`, so whichever container ends up
+running is supported. If the whisperflow service is down when a meeting is
+uploaded, the job queues and the UI says transcription is waiting on the service.
 
 ## 6. Long-transcript handling
 
@@ -149,7 +175,7 @@ SQLite tables:
 - `meetings(id, user_id, title, meeting_date, filename, duration_s, status, created_at)`
 - `jobs(id, meeting_id, kind[transcribe|notes], status[queued|running|done|error], step, error, started_at, finished_at)`
 - `transcripts(meeting_id, text, segments_json, language, created_at)`
-- `prompts(id, name, description, archived, created_by, created_at)`
+- `prompts(id, name, description, owner_id NULL=official, read_only, cloned_from_version_id, archived, created_by, created_at)`
 - `prompt_versions(id, prompt_id, version, system, template, reduce_template, model, temperature, max_tokens, created_at)`
 - `notes(id, meeting_id, prompt_version_id, model_used, markdown, created_at)`
 
@@ -189,9 +215,9 @@ confirmation step); nothing else in v1 deletes data.
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `WHISPER_URL` | `ws://link:8181/ws` or `http://link:8181` | whisperflow endpoint |
+| `WHISPER_URL` | `ws://lync:8181/ws` or `http://lync:8181` | whisperflow endpoint |
 | `TRANSCRIBER_KIND` | `whisperflow-ws` | adapter selection |
-| `LLM_BASE_URL` | `http://link:8080/v1` | llama-swap OpenAI-compatible base |
+| `LLM_BASE_URL` | `http://lync:8080/v1` | llama-swap OpenAI-compatible base |
 | `LLM_DEFAULT_MODEL` | `qwen2.5-32b` | model when a prompt doesn't pin one |
 | `LLM_CONTEXT_TOKENS` | `32768` | chunking threshold |
 | `SECRET_KEY` | random 32+ bytes | session cookie signing |
@@ -200,7 +226,7 @@ confirmation step); nothing else in v1 deletes data.
 | `DATA_DIR` | `/data` | storage root |
 
 `docker-compose.yml` mounts `./data:/data` and publishes the UI port (default
-`8000`). No GPU needed in this container — the heavy lifting stays on the link
+`8000`). No GPU needed in this container — the heavy lifting stays on the lync
 machine.
 
 ## 10. Execution steps
@@ -229,14 +255,20 @@ machine.
 **Phase 4 — Hardening & docs**
 14. Error handling everywhere it can fail: unreachable services, transcription failures, LLM timeouts (llama-swap cold-start), oversized uploads — surfaced in the UI with retry.
 15. Concurrency guard (limit to N concurrent transcriptions; queue the rest).
-16. README: setup, env vars, first-run admin bootstrap, docker-compose example wired to the link machine.
+16. README: setup, env vars, first-run admin bootstrap, docker-compose example wired to the lync machine.
 17. Optional stretch goals: per-meeting sharing between users, SSE live transcript preview during transcription, speaker diarization (if the whisper backend supports it), Obsidian/Notion-friendly export, tags on meetings.
 
 ## 11. Open questions / assumptions
 
-- **whisperflow API shape** — assumed the dimastatz whisper-flow WS contract; Phase 0 verifies against the actual container and picks the right adapter.
-- **Hostnames/ports** — placeholders (`link:8181`, `link:8080`) until confirmed.
-- **Meeting visibility** — assumed private per user (admins see all); a share toggle is a stretch goal.
-- **Prompt scope** — assumed prompts are shared by all users and editable by any member; flip to admin-only editing if preferred.
+- **whisperflow is not running yet** (confirmed absent from lync's `docker ps`,
+  2026-07-08) — it must be started (image + port TBD), or its URL provided if it
+  lives elsewhere. Phase 0 verifies its API shape and picks the right adapter.
+  llama-swap is confirmed at `http://lync:8080/v1`.
+- **Personal prompt visibility** — assumed personal prompts are also visible/usable
+  workspace-wide (only *editing* is restricted to the owner). Flip to
+  private-to-owner if that's the intent of "personal".
+- **Where knowts runs** — assumed on lync alongside the other containers; nothing
+  depends on it as long as lync:8080 (and the whisper port) are reachable.
+- **Meeting visibility** — private per user (admins see all); a share toggle is a stretch goal.
 - **Diarization** — not assumed; notes prompts work without speaker labels but benefit from them if present.
 - **One MP3 = one meeting** — no multi-file merge in v1.
