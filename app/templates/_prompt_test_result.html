@@ -4,7 +4,7 @@
 {% elif rendered %}
 <article class="note test-note">
   <header class="note-head">
-    <strong>Preview</strong>
+    <strong>{{ t('Preview') }}</strong>
     {% if model_used %}<span class="muted">{{ model_used }}</span>{% endif %}
   </header>
   <div class="note-body">{{ rendered|safe }}</div>

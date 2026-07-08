@@ -18,6 +18,7 @@ import sqlite3
 from pathlib import Path
 
 from . import audio, jobs, meetings, notes, prompts
+from . import users as users_mod
 from .audio import AudioError
 from .config import Settings
 from .llm import LLMClient, LLMError
@@ -128,6 +129,9 @@ def _run_notes(
         return False
 
     jobs.mark_running(conn, job.id, step=f"notes:{prompt.name}")
+    meeting = meetings.get(conn, job.meeting_id)
+    owner = users_mod.get_by_id(conn, meeting.user_id) if meeting else None
+    language_override = owner.language if owner and owner.language != "en" else None
     try:
         markdown, model_used = notes.generate(
             client,
@@ -136,6 +140,7 @@ def _run_notes(
             transcript.segments,
             default_model=settings.llm_default_model,
             context_tokens=settings.llm_context_tokens,
+            language_override=language_override,
         )
     except LLMError as exc:
         jobs.mark_error(conn, job.id, str(exc))

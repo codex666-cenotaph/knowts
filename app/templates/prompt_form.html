@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% set editable = (mode == 'new') or can_edit %}
-{% block title %}{{ 'New prompt' if mode == 'new' else prompt.name }} · knowts{% endblock %}
+{% block title %}{{ t('New prompt') if mode == 'new' else prompt.name }} · knowts{% endblock %}
 {% block content %}
 <div class="meeting-header">
   <div>
-    <h1>{{ 'New prompt' if mode == 'new' else prompt.name }}</h1>
+    <h1>{{ t('New prompt') if mode == 'new' else prompt.name }}</h1>
     {% if mode == 'edit' %}
     <p class="muted">
-      {% if prompt.is_official %}<span class="badge">🔒 official</span>{% else %}<span class="badge">personal</span>{% endif %}
-      {% if not editable %} · read-only for you — clone it to make changes{% endif %}
+      {% if prompt.is_official %}<span class="badge">🔒 {{ t('official') }}</span>{% else %}<span class="badge">{{ t('personal') }}</span>{% endif %}
+      {% if not editable %} · {{ t('read-only for you — clone it to make changes') }}{% endif %}
     </p>
     {% endif %}
   </div>
-  <a href="/prompts">← All prompts</a>
+  <a href="/prompts">{{ t('← All prompts') }}</a>
 </div>
 
 <form method="post"
@@ -20,46 +20,46 @@
       class="stack prompt-editor">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-  <label>Name
+  <label>{{ t('Name') }}
     <input type="text" name="name" required value="{{ prompt.name if prompt else '' }}"
            {{ 'readonly' if not editable else '' }}>
   </label>
 
-  <label>Description
+  <label>{{ t('Description') }}
     <input type="text" name="description" value="{{ prompt.description if prompt else '' }}"
            {{ 'readonly' if not editable else '' }}>
   </label>
 
-  <label>System message
+  <label>{{ t('System message') }}
     <textarea id="f_system" name="system" rows="4"
               {{ 'readonly' if not editable else '' }}>{{ version.system if version and version.system else '' }}</textarea>
   </label>
 
-  <label>Template
-    <span class="hint">must contain <code>{transcript}</code></span>
+  <label>{{ t('Template') }}
+    <span class="hint">{{ t('must contain') }} <code>{transcript}</code></span>
     <textarea id="f_template" name="template" rows="7" required
               {{ 'readonly' if not editable else '' }}>{{ version.template if version else 'Summarize the following transcript.\n\nTranscript:\n{transcript}' }}</textarea>
   </label>
 
-  <label>Reduce template <span class="muted">(optional; merges partial results for long transcripts)</span>
+  <label>{{ t('Reduce template') }} <span class="muted">{{ t('(optional; merges partial results for long transcripts)') }}</span>
     <textarea id="f_reduce" name="reduce_template" rows="4"
               {{ 'readonly' if not editable else '' }}>{{ version.reduce_template if version and version.reduce_template else '' }}</textarea>
   </label>
 
   <div class="field-row">
-    <label>Model <span class="muted">(optional; blank uses the default)</span>
+    <label>{{ t('Model') }} <span class="muted">{{ t('(optional; blank uses the default)') }}</span>
       <input id="f_model" name="model" list="models-list" value="{{ version.model if version and version.model else '' }}"
              {{ 'readonly' if not editable else '' }}>
       <datalist id="models-list">
         {% for m in models %}<option value="{{ m }}">{% endfor %}
       </datalist>
     </label>
-    <label>Temperature
+    <label>{{ t('Temperature') }}
       <input id="f_temperature" name="temperature" type="number" step="0.1" min="0" max="2"
              value="{{ version.temperature if version and version.temperature is not none else '' }}"
              {{ 'readonly' if not editable else '' }}>
     </label>
-    <label>Max tokens
+    <label>{{ t('Max tokens') }}
       <input id="f_max_tokens" name="max_tokens" type="number" min="1"
              value="{{ version.max_tokens if version and version.max_tokens is not none else '' }}"
              {{ 'readonly' if not editable else '' }}>
@@ -69,13 +69,13 @@
   {% if mode == 'new' and user.is_admin %}
   <label class="check inline-check">
     <input type="checkbox" name="official" value="1">
-    <span>Official prompt (shared, read-only for members)</span>
+    <span>{{ t('Official prompt (shared, read-only for members)') }}</span>
   </label>
   {% endif %}
 
   {% if editable %}
   <div class="actions">
-    <button type="submit" class="primary">{{ 'Create prompt' if mode == 'new' else 'Save' }}</button>
+    <button type="submit" class="primary">{{ t('Create prompt') if mode == 'new' else t('Save') }}</button>
   </div>
   {% endif %}
 </form>
@@ -83,25 +83,24 @@
 {% if mode == 'edit' and not editable %}
 <form method="post" action="/prompts/{{ prompt.id }}/clone" class="stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <button type="submit" class="btn">Clone to edit</button>
+  <button type="submit" class="btn">{{ t('Clone to edit') }}</button>
 </form>
 {% endif %}
 
 <section class="panel">
-  <h2>Test run</h2>
-  <p class="muted">Preview this prompt against a transcript snippet before saving.
-    Uses the fields above (long snippets are truncated).</p>
+  <h2>{{ t('Test run') }}</h2>
+  <p class="muted">{{ t('Preview this prompt against a transcript snippet before saving. Uses the fields above (long snippets are truncated).') }}</p>
   <form class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Transcript snippet
-      <textarea name="transcript" rows="5" placeholder="Paste a bit of a transcript..."></textarea>
+    <label>{{ t('Transcript snippet') }}
+      <textarea name="transcript" rows="5" placeholder="{{ t('Paste a bit of a transcript...') }}"></textarea>
     </label>
     <div class="actions">
       <button type="submit" class="btn"
               hx-post="/prompts/test"
               hx-target="#test-result"
               hx-include="#f_system,#f_template,#f_model,#f_temperature,#f_max_tokens"
-              hx-indicator="#test-spinner">Run test</button>
+              hx-indicator="#test-spinner">{{ t('Run test') }}</button>
       <span id="test-spinner" class="spinner htmx-indicator" aria-hidden="true"></span>
     </div>
   </form>
@@ -110,13 +109,13 @@
 
 {% if mode == 'edit' and versions %}
 <section class="panel">
-  <h2>Version history</h2>
-  <p class="muted">Each edit stores a new version so past notes stay attributable.</p>
+  <h2>{{ t('Version history') }}</h2>
+  <p class="muted">{{ t('Each edit stores a new version so past notes stay attributable.') }}</p>
   <ul class="version-history">
     {% for v in versions %}
     <li>
       <strong>v{{ v.version }}</strong>
-      {% if v.version == version.version %}<span class="badge">current</span>{% endif %}
+      {% if v.version == version.version %}<span class="badge">{{ t('current') }}</span>{% endif %}
       {% if v.model %}<span class="muted">· {{ v.model }}</span>{% endif %}
       <pre class="version-template">{{ v.template }}</pre>
     </li>

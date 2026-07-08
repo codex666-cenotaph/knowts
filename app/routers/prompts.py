@@ -23,6 +23,7 @@ from .. import auth as auth_mod
 from .. import prompts as prompts_mod
 from ..config import Settings, get_settings
 from ..llm import LLMClient, LLMError
+from ..notes import system_with_language_override
 from ..templating import render
 from ..users import User
 
@@ -174,8 +175,11 @@ def test_run(
     ctx: auth_mod.AuthContext = Depends(auth_mod.resolve_auth),
 ):
     """Run the prompt (single-shot) against a transcript snippet and return an
-    HTMX fragment with the rendered Markdown — a preview before saving."""
-    auth_mod.require_user(ctx)
+    HTMX fragment with the rendered Markdown — a preview before saving.
+
+    Applies the same "respond only in <language>" override the real pipeline
+    would use for this user's meetings, so the preview matches reality."""
+    user = auth_mod.require_user(ctx)
     auth_mod.verify_csrf(request, csrf_token, ctx)
 
     if prompts_mod.TRANSCRIPT_PLACEHOLDER not in template:
@@ -198,10 +202,12 @@ def test_run(
     snippet = snippet[:_TEST_SNIPPET_CHARS]
     model_used = model.strip() or settings.llm_default_model
     user_prompt = template.replace(prompts_mod.TRANSCRIPT_PLACEHOLDER, snippet)
+    language_override = user.language if user.language != "en" else None
+    effective_system = system_with_language_override(system.strip() or None, language_override)
     try:
         content = LLMClient(settings.llm_base_url).complete(
             model=model_used,
-            system=system.strip() or None,
+            system=effective_system,
             user=user_prompt,
             temperature=_parse_float(temperature),
             max_tokens=_parse_int(max_tokens),

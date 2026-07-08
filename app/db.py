@@ -114,6 +114,12 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX idx_notes_meeting ON notes(meeting_id);
         """,
     ),
+    (
+        3,
+        """
+        ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'en';
+        """,
+    ),
 ]
 
 

@@ -10,9 +10,9 @@
     </p>
   </div>
   <form method="post" action="/meetings/{{ meeting.id }}/delete" class="inline"
-        onsubmit="return confirm('Delete this meeting, its transcript and notes?');">
+        data-confirm-delete="{{ t('Delete this meeting, its transcript and notes?') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="linkbtn danger">Delete</button>
+    <button type="submit" class="linkbtn danger">{{ t('Delete') }}</button>
   </form>
 </div>
 
@@ -20,22 +20,22 @@
 
 {% if meeting.filename %}
 <section class="card">
-  <h3>Audio</h3>
+  <h3>{{ t('Audio') }}</h3>
   <audio controls preload="none" src="/meetings/{{ meeting.id }}/audio"></audio>
-  <p><a href="/meetings/{{ meeting.id }}/audio" download>Download original</a></p>
+  <p><a href="/meetings/{{ meeting.id }}/audio" download>{{ t('Download original') }}</a></p>
 </section>
 {% endif %}
 
 {% if transcript %}
 <section class="card">
   <details>
-    <summary><h3 class="inline-h3">Transcript</h3>
+    <summary><h3 class="inline-h3">{{ t('Transcript') }}</h3>
       {% if transcript.language %}<span class="muted">({{ transcript.language }})</span>{% endif %}
     </summary>
     <p class="downloads">
-      <a href="/meetings/{{ meeting.id }}/transcript.txt">Download .txt</a>
+      <a href="/meetings/{{ meeting.id }}/transcript.txt">{{ t('Download .txt') }}</a>
       {% if transcript.segments %}·
-        <a href="/meetings/{{ meeting.id }}/transcript.srt">Download .srt</a>
+        <a href="/meetings/{{ meeting.id }}/transcript.srt">{{ t('Download .srt') }}</a>
       {% endif %}
     </p>
     {% if transcript.segments %}
@@ -53,14 +53,14 @@
 {% endif %}
 
 <section class="card">
-  <h3>Notes</h3>
+  <h3>{{ t('Notes') }}</h3>
   {% if notes %}
     <div class="note-tabs" data-note-tabs>
       <div class="tab-labels" role="tablist">
         {% for n in notes %}
         <button type="button" class="tab-label" data-tab-target="note-{{ n.id }}"
                 {% if loop.first %}aria-selected="true"{% endif %}>
-          {{ n.prompt_name or 'notes' }}
+          {{ n.prompt_name or t('Notes') }}
         </button>
         {% endfor %}
       </div>
@@ -69,8 +69,9 @@
         <header class="note-head">
           <span class="muted">{{ n.model_used or '' }}{% if n.model_used %} · {% endif %}{{ n.created_at[:16] }}</span>
           <span class="note-tools">
-            <button type="button" class="linkbtn" data-copy-note="{{ n.id }}">Copy</button>
-            <a href="/meetings/{{ meeting.id }}/notes/{{ n.id }}.md">Download .md</a>
+            <button type="button" class="linkbtn" data-copy-note="{{ n.id }}"
+                    data-copy-label="{{ t('Copy') }}" data-copied-label="{{ t('Copied!') }}">{{ t('Copy') }}</button>
+            <a href="/meetings/{{ meeting.id }}/notes/{{ n.id }}.md">{{ t('Download .md') }}</a>
           </span>
         </header>
         <textarea class="note-raw" id="note-raw-{{ n.id }}" hidden>{{ n.markdown }}</textarea>
@@ -79,12 +80,12 @@
       {% endfor %}
     </div>
   {% else %}
-    <p class="muted">No notes generated yet.</p>
+    <p class="muted">{{ t('No notes generated yet.') }}</p>
   {% endif %}
 
   {% if transcript %}
   <details class="more-notes">
-    <summary>Generate more notes</summary>
+    <summary>{{ t('Generate more notes') }}</summary>
     <form method="post" action="/meetings/{{ meeting.id }}/notes">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <fieldset class="prompt-picker">
@@ -95,7 +96,7 @@
         </label>
         {% endfor %}
       </fieldset>
-      <button type="submit" class="btn">Run</button>
+      <button type="submit" class="btn">{{ t('Run') }}</button>
     </form>
   </details>
   {% endif %}
@@ -125,10 +126,14 @@
       var ta = document.getElementById('note-raw-' + btn.dataset.copyNote);
       if (!ta) return;
       navigator.clipboard.writeText(ta.value).then(function () {
-        var original = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(function () { btn.textContent = original; }, 1500);
+        btn.textContent = btn.dataset.copiedLabel;
+        setTimeout(function () { btn.textContent = btn.dataset.copyLabel; }, 1500);
       });
+    });
+  });
+  document.querySelectorAll('[data-confirm-delete]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!confirm(f.dataset.confirmDelete)) e.preventDefault();
     });
   });
 })();

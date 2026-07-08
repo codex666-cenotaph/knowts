@@ -58,6 +58,12 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   offers a live model dropdown from llama-swap's `/v1/models`, `{transcript}`
   placeholder validation, and a **test-run** that previews a prompt against a
   transcript snippet before saving.
+- **Profile language preference**: a language select (English/Dutch) on the
+  profile page (`app/i18n.py`) switches the whole interface. Selecting Dutch
+  also makes note generation (and the prompt manager's test-run preview)
+  append a "respond only in Dutch" instruction to the system message,
+  overriding the starter prompts' default "same language as the transcript"
+  behavior — regardless of what language the meeting was actually held in.
 
 ## Run locally
 

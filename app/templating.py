@@ -14,6 +14,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from . import i18n
 from .auth import AuthContext
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -28,11 +29,14 @@ def render(
     **context: object,
 ) -> HTMLResponse:
     auth: AuthContext | None = getattr(request.state, "auth", None)
+    lang = auth.user.language if auth and auth.user else i18n.DEFAULT_LANGUAGE
     base = {
         "user": auth.user if auth else None,
         "csrf_token": auth.csrf_token if auth else None,
         "flash_msg": request.query_params.get("msg"),
         "flash_err": request.query_params.get("err"),
+        "lang": lang,
+        "t": lambda key: i18n.t(key, lang),
     }
     base.update(context)
     return templates.TemplateResponse(request, name, base, status_code=status_code)

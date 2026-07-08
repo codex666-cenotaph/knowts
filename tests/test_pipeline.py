@@ -133,6 +133,40 @@ def test_transcription_failure_marks_meeting_error(env, monkeypatch):
     assert meetings.list_notes(conn, meeting.id) == []
 
 
+def test_notes_use_dutch_override_for_dutch_owner(env, monkeypatch):
+    settings, conn = env
+    from app import users
+
+    captured_systems = []
+
+    class _CapturingLLM:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, *, model, system, user, temperature=None, max_tokens=None):
+            captured_systems.append(system)
+            return "# Notes\n\ncontent"
+
+    monkeypatch.setattr(pipeline, "LLMClient", _CapturingLLM)
+
+    owner = users.create(conn, "marieke", "marspass123", "member")
+    users.set_language(conn, owner.id, "nl")
+
+    meeting = meetings.create(
+        conn, user_id=owner.id, title="Sync", meeting_date=None, filename="1.mp3"
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    summary = next(p for p in prompts.list_active(conn) if p.name == "summary")
+    jobs.create_transcribe_job(conn, meeting.id)
+    jobs.create_notes_job(conn, meeting.id, summary.id)
+
+    pipeline.process_meeting(conn, settings, meeting.id)
+
+    assert meetings.get(conn, meeting.id).status == meetings.STATUS_DONE
+    assert len(captured_systems) == 1
+    assert "Dutch" in captured_systems[0]
+
+
 def test_generate_more_notes_reuses_transcript(env):
     settings, conn = env
     user = _make_user(conn)

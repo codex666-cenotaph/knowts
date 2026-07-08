@@ -1,39 +1,38 @@
 {% extends "base.html" %}
-{% block title %}Prompts · knowts{% endblock %}
+{% block title %}{{ t('Prompts') }} · knowts{% endblock %}
 {% block content %}
 <div class="meeting-header">
-  <h1>Prompts</h1>
-  <a href="/prompts/new" class="btn">New prompt</a>
+  <h1>{{ t('Prompts') }}</h1>
+  <a href="/prompts/new" class="btn">{{ t('New prompt') }}</a>
 </div>
-<p class="muted">Prompts turn a transcript into notes. Official prompts (🔒) are the
-  shared library; clone any prompt to make an editable personal copy.</p>
+<p class="muted">{{ t('Prompts turn a transcript into notes. Official prompts (🔒) are the shared library; clone any prompt to make an editable personal copy.') }}</p>
 
 <form method="get" action="/prompts" class="row-form filter-form">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search name or description">
+  <input type="search" name="q" value="{{ q }}" placeholder="{{ t('Search name or description') }}">
   <label class="check inline-check">
     <input type="checkbox" name="show" value="all" {% if include_archived %}checked{% endif %}
            onchange="this.form.submit()">
-    <span>Include archived</span>
+    <span>{{ t('Include archived') }}</span>
   </label>
-  <button type="submit" class="primary">Search</button>
-  {% if q or include_archived %}<a href="/prompts">Clear</a>{% endif %}
+  <button type="submit" class="primary">{{ t('Search') }}</button>
+  {% if q or include_archived %}<a href="/prompts">{{ t('Clear') }}</a>{% endif %}
 </form>
 
 {% if items %}
 <table class="grid">
   <thead>
-    <tr><th>Name</th><th>Kind</th><th>Description</th><th>Versions</th><th>Actions</th></tr>
+    <tr><th>{{ t('Name') }}</th><th>{{ t('Kind') }}</th><th>{{ t('Description') }}</th><th>{{ t('Versions') }}</th><th>{{ t('Actions') }}</th></tr>
   </thead>
   <tbody>
     {% for it in items %}
     {% set p = it.prompt %}
     <tr class="{{ 'inactive' if p.archived else '' }}">
       <td><a href="/prompts/{{ p.id }}">{{ p.name }}</a>
-        {% if p.archived %} <span class="badge">archived</span>{% endif %}
+        {% if p.archived %} <span class="badge">{{ t('archived') }}</span>{% endif %}
       </td>
       <td>
-        {% if p.is_official %}<span class="badge" title="official (read-only)">🔒 official</span>
-        {% else %}<span class="badge">personal</span>
+        {% if p.is_official %}<span class="badge" title="{{ t('official') }}">🔒 {{ t('official') }}</span>
+        {% else %}<span class="badge">{{ t('personal') }}</span>
           <small class="muted">{{ it.owner_username or '—' }}</small>
         {% endif %}
       </td>
@@ -42,20 +41,20 @@
       <td class="actions">
         <form method="post" action="/prompts/{{ p.id }}/clone" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" class="linkbtn">Clone</button>
+          <button type="submit" class="linkbtn">{{ t('Clone') }}</button>
         </form>
         {% if p.archived %}
         <form method="post" action="/prompts/{{ p.id }}/archive" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="archived" value="0">
-          <button type="submit" class="linkbtn">Restore</button>
+          <button type="submit" class="linkbtn">{{ t('Restore') }}</button>
         </form>
         {% else %}
         <form method="post" action="/prompts/{{ p.id }}/archive" class="inline"
-              onsubmit="return confirm('Archive this prompt? It stays out of the picker but past notes keep their reference.');">
+              data-confirm-delete="{{ t('Archive this prompt? It stays out of the picker but past notes keep their reference.') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="archived" value="1">
-          <button type="submit" class="linkbtn">Archive</button>
+          <button type="submit" class="linkbtn">{{ t('Archive') }}</button>
         </form>
         {% endif %}
       </td>
@@ -64,6 +63,14 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No prompts match. <a href="/prompts/new">Create one →</a></p>
+<p class="muted">{{ t('No prompts match. ') }}<a href="/prompts/new">{{ t('Create one →') }}</a></p>
 {% endif %}
+
+<script>
+document.querySelectorAll('[data-confirm-delete]').forEach(function (f) {
+  f.addEventListener('submit', function (e) {
+    if (!confirm(f.dataset.confirmDelete)) e.preventDefault();
+  });
+});
+</script>
 {% endblock %}

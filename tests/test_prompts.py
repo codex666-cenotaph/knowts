@@ -85,9 +85,11 @@ class _FakeLLM:
 
     def __init__(self):
         self.calls: list[str] = []
+        self.systems: list[str | None] = []
 
     def complete(self, *, model, system, user, temperature=None, max_tokens=None):
         self.calls.append(user)
+        self.systems.append(system)
         return f"NOTES({len(self.calls)})"
 
 
@@ -133,3 +135,39 @@ def test_notes_uses_pinned_model():
         fake, v, "hi", None, default_model="default", context_tokens=32768
     )
     assert model == "pinned-model"
+
+
+def test_notes_no_language_override_by_default():
+    fake = _FakeLLM()
+    notes.generate(
+        fake, _version(), "hi", None, default_model="m", context_tokens=32768
+    )
+    assert fake.systems == ["sys"]
+
+
+def test_notes_dutch_override_adds_instruction_to_system():
+    fake = _FakeLLM()
+    notes.generate(
+        fake, _version(), "hi", None, default_model="m", context_tokens=32768,
+        language_override="nl",
+    )
+    assert len(fake.systems) == 1
+    system = fake.systems[0]
+    assert system.startswith("sys\n\n")
+    assert "Dutch" in system
+
+
+def test_notes_unknown_language_override_is_a_no_op():
+    fake = _FakeLLM()
+    notes.generate(
+        fake, _version(), "hi", None, default_model="m", context_tokens=32768,
+        language_override="fr",
+    )
+    assert fake.systems == ["sys"]
+
+
+def test_system_with_language_override_handles_missing_system():
+    assert notes.system_with_language_override(None, "nl") is not None
+    assert "Dutch" in notes.system_with_language_override(None, "nl")
+    assert notes.system_with_language_override(None, None) is None
+    assert notes.system_with_language_override("sys", "en") == "sys"

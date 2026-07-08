@@ -6,6 +6,9 @@ import sqlite3
 from dataclasses import dataclass
 
 from . import security
+from .i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
+
+_USER_COLUMNS = "id, username, role, active, created_at, language"
 
 
 class UsernameTaken(Exception):
@@ -19,6 +22,7 @@ class User:
     role: str
     active: bool
     created_at: str
+    language: str = DEFAULT_LANGUAGE
 
     @property
     def is_admin(self) -> bool:
@@ -32,12 +36,13 @@ def _row_to_user(row: sqlite3.Row) -> User:
         role=row["role"],
         active=bool(row["active"]),
         created_at=row["created_at"],
+        language=row["language"],
     )
 
 
 def get_by_id(conn: sqlite3.Connection, user_id: int) -> User | None:
     row = conn.execute(
-        "SELECT id, username, role, active, created_at FROM users WHERE id = ?",
+        f"SELECT {_USER_COLUMNS} FROM users WHERE id = ?",
         (user_id,),
     ).fetchone()
     return _row_to_user(row) if row else None
@@ -45,7 +50,7 @@ def get_by_id(conn: sqlite3.Connection, user_id: int) -> User | None:
 
 def get_by_username(conn: sqlite3.Connection, username: str) -> User | None:
     row = conn.execute(
-        "SELECT id, username, role, active, created_at FROM users WHERE username = ?",
+        f"SELECT {_USER_COLUMNS} FROM users WHERE username = ?",
         (username,),
     ).fetchone()
     return _row_to_user(row) if row else None
@@ -60,8 +65,7 @@ def get_password_hash(conn: sqlite3.Connection, user_id: int) -> str | None:
 
 def list_all(conn: sqlite3.Connection) -> list[User]:
     rows = conn.execute(
-        "SELECT id, username, role, active, created_at FROM users "
-        "ORDER BY username COLLATE NOCASE"
+        f"SELECT {_USER_COLUMNS} FROM users ORDER BY username COLLATE NOCASE"
     ).fetchall()
     return [_row_to_user(r) for r in rows]
 
@@ -110,6 +114,13 @@ def set_active(conn: sqlite3.Connection, user_id: int, active: bool) -> None:
     conn.commit()
 
 
+def set_language(conn: sqlite3.Connection, user_id: int, language: str) -> None:
+    if language not in SUPPORTED_LANGUAGES:
+        raise ValueError(f"unsupported language: {language}")
+    conn.execute("UPDATE users SET language = ? WHERE id = ?", (language, user_id))
+    conn.commit()
+
+
 def verify_credentials(
     conn: sqlite3.Connection, username: str, password: str
 ) -> User | None:
@@ -117,8 +128,7 @@ def verify_credentials(
     matches. Always runs a hash verification (even for unknown users) to avoid
     leaking account existence through response timing."""
     row = conn.execute(
-        "SELECT id, username, password_hash, role, active, created_at "
-        "FROM users WHERE username = ?",
+        f"SELECT {_USER_COLUMNS}, password_hash FROM users WHERE username = ?",
         (username,),
     ).fetchone()
 

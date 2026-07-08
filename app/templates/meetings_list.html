@@ -1,20 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Meetings · knowts{% endblock %}
+{% block title %}{{ t('Meetings') }} · knowts{% endblock %}
 {% block content %}
-<h1>Meetings</h1>
+<h1>{{ t('Meetings') }}</h1>
 
 <form method="get" action="/meetings" class="row-form filter-form">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search by title">
-  <label class="date-field">From <input type="date" name="date_from" value="{{ date_from }}"></label>
-  <label class="date-field">To <input type="date" name="date_to" value="{{ date_to }}"></label>
-  <button type="submit" class="primary">Filter</button>
-  {% if filtered %}<a href="/meetings">Clear</a>{% endif %}
+  <input type="search" name="q" value="{{ q }}" placeholder="{{ t('Search by title') }}">
+  <label class="date-field">{{ t('From') }} <input type="date" name="date_from" value="{{ date_from }}"></label>
+  <label class="date-field">{{ t('To') }} <input type="date" name="date_to" value="{{ date_to }}"></label>
+  <button type="submit" class="primary">{{ t('Filter') }}</button>
+  {% if filtered %}<a href="/meetings">{{ t('Clear') }}</a>{% endif %}
 </form>
 
 {% if items %}
 <table class="table">
   <thead>
-    <tr><th>Title</th><th>Date</th><th>Duration</th><th>Status</th><th>Notes</th></tr>
+    <tr><th>{{ t('Title') }}</th><th>{{ t('Date') }}</th><th>{{ t('Duration') }}</th><th>{{ t('Status') }}</th><th>{{ t('Notes') }}</th></tr>
   </thead>
   <tbody>
     {% for it in items %}
@@ -23,15 +23,15 @@
       <td><a href="/meetings/{{ m.id }}">{{ m.title }}</a></td>
       <td>{{ m.meeting_date or m.created_at[:10] }}</td>
       <td>{% if m.duration_s %}{{ (m.duration_s // 60)|int }}m {{ (m.duration_s % 60)|int }}s{% else %}—{% endif %}</td>
-      <td><span class="badge status-{{ m.status }}">{{ m.status }}</span></td>
+      <td><span class="badge status-{{ m.status }}">{{ t(m.status) }}</span></td>
       <td>{{ it.notes }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 {% elif filtered %}
-<p class="muted">No meetings match your filter. <a href="/meetings">Clear filter</a></p>
+<p class="muted">{{ t('No meetings match your filter.') }} <a href="/meetings">{{ t('Clear filter') }}</a></p>
 {% else %}
-<p class="muted">No meetings yet. <a href="/">Upload one →</a></p>
+<p class="muted">{{ t('No meetings yet.') }} <a href="/">{{ t('Upload one →') }}</a></p>
 {% endif %}
 {% endblock %}
