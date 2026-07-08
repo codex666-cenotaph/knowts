@@ -152,12 +152,48 @@ def create_prompt(
     return prompt
 
 
+def _next_version_number(conn: sqlite3.Connection, prompt_id: int) -> int:
+    row = conn.execute(
+        "SELECT MAX(version) AS v FROM prompt_versions WHERE prompt_id = ?",
+        (prompt_id,),
+    ).fetchone()
+    return (row["v"] or 0) + 1
+
+
+def add_version(
+    conn: sqlite3.Connection,
+    prompt_id: int,
+    *,
+    system: str | None,
+    template: str,
+    reduce_template: str | None = None,
+    model: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> int:
+    """Append a new version to an existing prompt. Older versions are kept so
+    notes generated from them stay attributable/reproducible (PLAN.md §4)."""
+    if TRANSCRIPT_PLACEHOLDER not in template:
+        raise ValueError(f"template must contain {TRANSCRIPT_PLACEHOLDER}")
+    version = _next_version_number(conn, prompt_id)
+    cur = conn.execute(
+        "INSERT INTO prompt_versions "
+        "(prompt_id, version, system, template, reduce_template, model, "
+        " temperature, max_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (prompt_id, version, system, template, reduce_template, model, temperature, max_tokens),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
 # --- Starter set ---------------------------------------------------------
 
 _GENERIC_SYSTEM = (
     "You are an expert meeting assistant. You are given the transcript of a "
-    "meeting and must produce clear, accurate, well-structured Markdown. Never "
-    "invent facts that are not supported by the transcript."
+    "meeting and must produce clear, accurate, well-structured Markdown. "
+    "Always write your response in the same language as the transcript "
+    "(e.g. a Dutch transcript gets Dutch notes). "
+    "Never invent facts that are not supported by the transcript."
 )
 
 _STARTER_PROMPTS: list[dict] = [
@@ -242,27 +278,51 @@ _STARTER_PROMPTS: list[dict] = [
 
 
 def seed_starter_prompts(conn: sqlite3.Connection) -> int:
-    """Seed the official starter set once. Idempotent: skips any starter whose
-    name already exists as an official prompt. Returns the number created."""
+    """Seed/refresh the official starter set. Idempotent when the specs are
+    unchanged. Returns the number of prompts newly created.
+
+    On an existing deployment, when a starter's text has changed since it was
+    seeded (e.g. a new language instruction), a new prompt *version* is appended
+    rather than editing history in place — old notes keep pointing at the
+    version that produced them. Official starters are read-only and have no edit
+    path, so their latest version is always a previous seed and safe to bump.
+    """
     created = 0
+    updated = 0
     for spec in _STARTER_PROMPTS:
-        exists = conn.execute(
-            "SELECT 1 FROM prompts WHERE name = ? AND owner_id IS NULL LIMIT 1",
+        row = conn.execute(
+            "SELECT id FROM prompts WHERE name = ? AND owner_id IS NULL LIMIT 1",
             (spec["name"],),
         ).fetchone()
-        if exists:
+        if row is None:
+            create_prompt(
+                conn,
+                name=spec["name"],
+                description=spec["description"],
+                system=spec["system"],
+                template=spec["template"],
+                reduce_template=spec["reduce_template"],
+                owner_id=None,
+                read_only=True,
+            )
+            created += 1
             continue
-        create_prompt(
-            conn,
-            name=spec["name"],
-            description=spec["description"],
-            system=spec["system"],
-            template=spec["template"],
-            reduce_template=spec["reduce_template"],
-            owner_id=None,
-            read_only=True,
-        )
-        created += 1
+
+        latest = latest_version(conn, row["id"])
+        current = (latest.system, latest.template, latest.reduce_template) if latest else None
+        desired = (spec["system"], spec["template"], spec["reduce_template"])
+        if current != desired:
+            add_version(
+                conn,
+                row["id"],
+                system=spec["system"],
+                template=spec["template"],
+                reduce_template=spec["reduce_template"],
+            )
+            updated += 1
+
     if created:
         log.info("Seeded %d official starter prompt(s).", created)
+    if updated:
+        log.info("Upgraded %d starter prompt(s) to a new version.", updated)
     return created

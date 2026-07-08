@@ -30,6 +30,41 @@ def test_seed_is_idempotent(conn: sqlite3.Connection):
     assert all(p.is_official and p.read_only for p in active)
 
 
+def test_starter_prompts_are_language_aware(conn: sqlite3.Connection):
+    prompts.seed_starter_prompts(conn)
+    summary = next(p for p in prompts.list_active(conn) if p.name == "summary")
+    version = prompts.latest_version(conn, summary.id)
+    assert "same language as the transcript" in (version.system or "")
+
+
+def test_seed_upgrades_stale_official_prompt(conn: sqlite3.Connection):
+    # Simulate a prior deployment that seeded an older 'summary' text.
+    stale = prompts.create_prompt(
+        conn, name="summary", description="old", system="OLD SYSTEM",
+        template="Old template {transcript}", reduce_template=None,
+        owner_id=None, read_only=True,
+    )
+    assert prompts.latest_version(conn, stale.id).version == 1
+
+    prompts.seed_starter_prompts(conn)
+
+    # The stale starter gained a new version matching the current spec...
+    latest = prompts.latest_version(conn, stale.id)
+    assert latest.version == 2
+    assert "same language as the transcript" in latest.system
+    # ...v1 is preserved for attribution of any old notes.
+    v1 = conn.execute(
+        "SELECT system FROM prompt_versions WHERE prompt_id = ? AND version = 1",
+        (stale.id,),
+    ).fetchone()
+    assert v1["system"] == "OLD SYSTEM"
+    # A second seed is a no-op now that specs match.
+    before = conn.execute("SELECT COUNT(*) AS c FROM prompt_versions").fetchone()["c"]
+    prompts.seed_starter_prompts(conn)
+    after = conn.execute("SELECT COUNT(*) AS c FROM prompt_versions").fetchone()["c"]
+    assert before == after
+
+
 def test_create_requires_transcript_placeholder(conn: sqlite3.Connection):
     with pytest.raises(ValueError):
         prompts.create_prompt(
