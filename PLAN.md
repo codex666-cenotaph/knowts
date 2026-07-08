@@ -284,10 +284,12 @@ link machine behind llama-swap.
 
 ## 11. Open questions / assumptions
 
-- **Unified image tag** — the llama-swap README documents a unified build
-  (whisper.cpp included) for CUDA and Vulkan but the exact Vulkan tag needs
-  confirming against the registry at deploy time; alternatives A/B are the
-  fallback. llama-swap itself is confirmed at `http://link:8080/v1`.
+- **Unified image tag** — confirmed as `ghcr.io/mostlygeek/llama-swap:unified-vulkan`
+  (the unified build bundles whisper.cpp; documented upstream for CUDA and
+  Vulkan). One thing still to confirm on `link` at deploy time: the
+  `whisper-server` binary path inside that image (assumed on `PATH`). Phase 0
+  runbook and artifacts are in [`deploy/`](./deploy/); alternatives A/B remain
+  the fallback. llama-swap itself is confirmed at `http://link:8080/v1`.
 - **Whisper model size** — starting with `large-v3-turbo` (ggml); Phase 0
   measures speed/VRAM on the AMD GPU and steps down if needed.
 - **Swapping the llama-swap image** briefly interrupts anything else using it
