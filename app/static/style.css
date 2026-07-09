@@ -220,10 +220,18 @@ audio { width: 100%; margin: 0.5rem 0; }
 .more-notes summary { cursor: pointer; color: var(--accent); }
 
 /* --- Phase 3: archive filter, prompt manager, notes tabs --- */
-.filter-form { margin: 1rem 0 1.5rem; align-items: flex-end; }
-.filter-form input[type="search"] { flex: 1 1 220px; }
-.date-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
-.date-field input { padding: 0.45rem 0.5rem; }
+.filter-form { margin: 1rem 0 1.5rem; align-items: flex-end; gap: 0.75rem; }
+.filter-form input[type="search"] { flex: 2 1 200px; }
+.date-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); flex: 0 1 150px; }
+/* Reset the inherited .row-form flex: inside this column container flex-basis
+   would otherwise stretch the date input vertically (making it very tall). */
+.date-field input { flex: none; width: 100%; padding: 0.45rem 0.5rem; }
+
+@media (max-width: 640px) {
+  .filter-form input[type="search"] { flex: 1 1 100%; }
+  .filter-form .date-field { flex: 1 1 40%; }
+  .filter-form button { flex: 1 1 auto; }
+}
 .inline-check { display: flex; align-items: center; gap: 0.4rem; grid-template-columns: none; }
 .inline-check input { grid-row: auto; }
 
