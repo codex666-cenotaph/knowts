@@ -31,6 +31,7 @@ router = APIRouter(prefix="/meetings")
 
 _ALLOWED_EXT = {".mp3", ".m4a", ".wav", ".mp4", ".ogg", ".flac", ".webm", ".aac"}
 _CHUNK = 1024 * 1024
+_MAX_SPEAKERS = 20
 
 
 def _db(request: Request) -> sqlite3.Connection:
@@ -87,6 +88,7 @@ async def upload(
     title: str = Form(...),
     meeting_date: str = Form(""),
     language: str = Form(""),
+    num_speakers: str = Form(""),
     prompt_ids: list[int] = Form(default=[]),
     csrf_token: str = Form(...),
     file: UploadFile = File(...),
@@ -115,6 +117,14 @@ async def upload(
     if language != "auto" and language not in SUPPORTED_LANGUAGES:
         language = user.language if user.language in SUPPORTED_LANGUAGES else "auto"
 
+    # Expected speaker count for diarization: 0/blank = auto-detect. Clamp to a
+    # sane range; ignore garbage.
+    try:
+        speakers = int(num_speakers)
+    except (TypeError, ValueError):
+        speakers = 0
+    speakers = max(0, min(speakers, _MAX_SPEAKERS))
+
     # Create the meeting first so the stored file can be named by its id
     # (PLAN.md §7: /data/audio/<meeting_id>.<ext>).
     meeting = meetings_mod.create(
@@ -124,6 +134,7 @@ async def upload(
         meeting_date=meeting_date.strip() or None,
         filename=None,
         language=language,
+        diarization_num_speakers=speakers,
     )
     filename = f"{meeting.id}{ext}"
     dest = _audio_file(settings, filename)

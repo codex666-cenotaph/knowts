@@ -26,6 +26,13 @@
     <small class="muted">{{ t('Transcription and notes use this language. Auto-detect lets whisper guess.') }}</small>
   </label>
 
+  {% if diarization_enabled %}
+  <label>{{ t('Speakers') }}
+    <input type="number" name="num_speakers" min="0" max="20" value="0" step="1">
+    <small class="muted">{{ t('How many people speak. 0 = auto-detect. Set the exact number if auto splits one person into several.') }}</small>
+  </label>
+  {% endif %}
+
   <label>{{ t('Audio file') }}
     <input type="file" name="file" accept="audio/*,.mp3,.m4a,.wav,.mp4,.ogg,.flac"
            required>

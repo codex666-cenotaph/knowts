@@ -126,6 +126,12 @@ MIGRATIONS: list[tuple[int, str]] = [
         ALTER TABLE meetings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto';
         """,
     ),
+    (
+        5,
+        """
+        ALTER TABLE meetings ADD COLUMN diarization_num_speakers INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
 ]
 
 

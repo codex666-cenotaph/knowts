@@ -42,6 +42,9 @@ _NL: dict[str, str] = {
     "Auto-detect": "Automatisch detecteren",
     "Transcription and notes use this language. Auto-detect lets whisper guess.":
         "Transcriptie en notities gebruiken deze taal. Automatisch detecteren laat whisper raden.",
+    "Speakers": "Sprekers",
+    "How many people speak. 0 = auto-detect. Set the exact number if auto splits one person into several.":
+        "Hoeveel mensen spreken. 0 = automatisch. Stel het exacte aantal in als automatisch één persoon in meerdere splitst.",
     "No prompts available.": "Geen prompts beschikbaar.",
     "Upload & process": "Uploaden & verwerken",
     "Recent meetings": "Recente vergaderingen",

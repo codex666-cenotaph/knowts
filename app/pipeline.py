@@ -119,7 +119,10 @@ def _run_transcribe(
         segments = result.segments
         if settings.diarization_enabled and segments:
             jobs.set_step(conn, job_id, "diarizing")
-            segments = diarize.apply_diarization(settings, wav, segments)
+            segments = diarize.apply_diarization(
+                settings, wav, segments,
+                num_speakers=meeting.diarization_num_speakers,
+            )
     except TranscriptionError as exc:
         jobs.mark_error(conn, job_id, str(exc))
         log.error("transcription failed for meeting %d: %s", meeting_id, exc)

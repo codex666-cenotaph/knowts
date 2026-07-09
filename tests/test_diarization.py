@@ -160,6 +160,14 @@ def test_apply_diarization_swallows_errors(monkeypatch):
     assert out == segs and "speaker" not in out[0]
 
 
+def test_build_diarizer_none_when_disabled():
+    from app.config import Settings
+
+    settings = Settings(SECRET_KEY="x" * 40)  # disabled
+    assert diarize.build_diarizer(settings) is None
+    assert diarize.build_diarizer(settings, num_speakers=3) is None
+
+
 def test_segments_roundtrip_speaker_key(tmp_path):
     conn = db_mod.connect(tmp_path / "t.db")
     db_mod.run_migrations(conn)

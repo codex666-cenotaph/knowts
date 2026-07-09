@@ -82,6 +82,11 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   Diarization is best-effort — if the deps/models are missing or a run fails, the
   transcript is saved unlabelled and transcription is never blocked. See
   `app/diarize.py` and the setup below.
+  When enabled, the upload form shows a **Speakers** field (0 = auto-detect) — set
+  the exact participant count per meeting if auto-detect splits one person across
+  several speakers; it overrides the global `DIARIZATION_NUM_SPEAKERS` for that
+  meeting. `DIARIZATION_CLUSTER_THRESHOLD` (higher = fewer speakers) is the global
+  knob for the auto case.
 
 ### Enabling diarization
 

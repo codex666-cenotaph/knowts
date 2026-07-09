@@ -112,10 +112,16 @@ class Diarizer:
         ]
 
 
-def build_diarizer(settings: Settings) -> Diarizer | None:
+def build_diarizer(
+    settings: Settings, *, num_speakers: int | None = None
+) -> Diarizer | None:
     """Construct a :class:`Diarizer` from settings, or ``None`` when diarization
     is disabled/unconfigured. Raises :class:`DiarizationError` if enabled but the
-    deps or model files are unusable (the caller downgrades that to a warning)."""
+    deps or model files are unusable (the caller downgrades that to a warning).
+
+    ``num_speakers`` (per-meeting, chosen at upload) overrides the global
+    ``DIARIZATION_NUM_SPEAKERS`` when > 0; otherwise the global applies, and 0
+    on both means auto-detect by clustering threshold."""
     if not settings.diarization_configured:
         return None
 
@@ -133,7 +139,11 @@ def build_diarizer(settings: Settings) -> Diarizer | None:
         ) from exc
 
     threads = max(1, settings.diarization_num_threads)
-    num_speakers = settings.diarization_num_speakers
+    effective_speakers = (
+        num_speakers
+        if num_speakers and num_speakers > 0
+        else settings.diarization_num_speakers
+    )
     config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
         segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
             pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
@@ -146,7 +156,7 @@ def build_diarizer(settings: Settings) -> Diarizer | None:
             model=str(emb_path), num_threads=threads, provider="cpu"
         ),
         clustering=sherpa_onnx.FastClusteringConfig(
-            num_clusters=num_speakers if num_speakers > 0 else -1,
+            num_clusters=effective_speakers if effective_speakers > 0 else -1,
             threshold=settings.diarization_cluster_threshold,
         ),
         min_duration_on=0.3,
@@ -160,10 +170,15 @@ def build_diarizer(settings: Settings) -> Diarizer | None:
 
 
 def apply_diarization(
-    settings: Settings, wav_path: Path, segments: list[dict] | None
+    settings: Settings,
+    wav_path: Path,
+    segments: list[dict] | None,
+    *,
+    num_speakers: int | None = None,
 ) -> list[dict] | None:
     """Best-effort: label ``segments`` with speakers, or return them unchanged.
 
+    ``num_speakers`` is the per-meeting expected speaker count (0/None = auto).
     Never raises — any failure (disabled, missing deps/models, runtime error)
     is logged and the original segments are returned, so a diarization problem
     can never fail a transcription.
@@ -171,7 +186,7 @@ def apply_diarization(
     if not settings.diarization_enabled or not segments:
         return segments
     try:
-        diarizer = build_diarizer(settings)
+        diarizer = build_diarizer(settings, num_speakers=num_speakers)
         if diarizer is None:
             return segments
         turns = diarizer.diarize(Path(wav_path))

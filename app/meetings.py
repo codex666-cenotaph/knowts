@@ -39,6 +39,9 @@ class Meeting:
     # Transcription/notes language chosen at upload: an ISO-639-1 code
     # (e.g. "en", "nl") or "auto" to let whisper autodetect.
     language: str = "auto"
+    # Expected speaker count for diarization, chosen at upload; 0 = auto-detect
+    # (cluster by threshold). Only used when diarization is enabled.
+    diarization_num_speakers: int = 0
 
 
 @dataclass(frozen=True)
@@ -72,12 +75,13 @@ def _row_to_meeting(row: sqlite3.Row) -> Meeting:
         status=row["status"],
         created_at=row["created_at"],
         language=row["language"],
+        diarization_num_speakers=row["diarization_num_speakers"],
     )
 
 
 _MEETING_COLUMNS = (
     "id, user_id, title, meeting_date, filename, duration_s, status, "
-    "created_at, language"
+    "created_at, language, diarization_num_speakers"
 )
 
 
@@ -92,11 +96,21 @@ def create(
     meeting_date: str | None,
     filename: str | None,
     language: str = "auto",
+    diarization_num_speakers: int = 0,
 ) -> Meeting:
     cur = conn.execute(
-        "INSERT INTO meetings (user_id, title, meeting_date, filename, status, language) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, title, meeting_date, filename, STATUS_PROCESSING, language),
+        "INSERT INTO meetings "
+        "(user_id, title, meeting_date, filename, status, language, diarization_num_speakers) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            title,
+            meeting_date,
+            filename,
+            STATUS_PROCESSING,
+            language,
+            diarization_num_speakers,
+        ),
     )
     conn.commit()
     meeting = get(conn, cur.lastrowid)

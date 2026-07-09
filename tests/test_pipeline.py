@@ -282,7 +282,9 @@ def test_diarization_labels_segments_when_enabled(env, monkeypatch):
                 SpeakerTurn(1.5, 3.0, "Speaker B"),
             ]
 
-    monkeypatch.setattr(diarize, "build_diarizer", lambda s: _FakeDiarizer())
+    monkeypatch.setattr(
+        diarize, "build_diarizer", lambda s, num_speakers=None: _FakeDiarizer()
+    )
 
     user = _make_user(conn)
     meeting = meetings.create(
@@ -297,6 +299,36 @@ def test_diarization_labels_segments_when_enabled(env, monkeypatch):
     transcript = meetings.get_transcript(conn, meeting.id)
     speakers = [s.get("speaker") for s in transcript.segments]
     assert speakers == ["Speaker A", "Speaker B"]
+
+
+def test_meeting_speaker_count_reaches_diarizer(env, monkeypatch):
+    settings, conn = env
+    from app import diarize
+    from app.diarize import SpeakerTurn
+
+    settings.diarization_enabled = True
+    captured = {}
+
+    class _FakeDiarizer:
+        def diarize(self, wav_path):
+            return [SpeakerTurn(0.0, 3.0, "Speaker A")]
+
+    def _fake_build(s, num_speakers=None):
+        captured["num_speakers"] = num_speakers
+        return _FakeDiarizer()
+
+    monkeypatch.setattr(diarize, "build_diarizer", _fake_build)
+
+    user = _make_user(conn)
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3",
+        diarization_num_speakers=3,
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    jobs.create_transcribe_job(conn, meeting.id)
+    pipeline.process_meeting(conn, settings, meeting.id)
+
+    assert captured["num_speakers"] == 3
 
 
 def test_diarization_off_leaves_segments_unlabelled(env):

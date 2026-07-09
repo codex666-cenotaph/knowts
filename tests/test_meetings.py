@@ -16,7 +16,8 @@ def _stub_pipeline(monkeypatch):
     monkeypatch.setattr(pipeline, "process_meeting", lambda *a, **k: None)
 
 
-def _upload(client, csrf, *, title="Team sync", prompt_ids=("1",), filename="m.mp3", language=None):
+def _upload(client, csrf, *, title="Team sync", prompt_ids=("1",), filename="m.mp3",
+            language=None, num_speakers=None):
     # httpx encodes a dict value that is a list as repeated form fields; a
     # list-of-tuples `data=` with `files=` does NOT round-trip through multipart.
     data = {
@@ -27,6 +28,8 @@ def _upload(client, csrf, *, title="Team sync", prompt_ids=("1",), filename="m.m
     }
     if language is not None:
         data["language"] = language
+    if num_speakers is not None:
+        data["num_speakers"] = num_speakers
     return client.post(
         "/meetings",
         data=data,
@@ -88,6 +91,54 @@ def test_upload_defaults_language_to_user_preference(client, monkeypatch):
     meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
     conn = client.app.state.db
     assert meetings_mod.get(conn, meeting_id).language == "en"
+
+
+def test_upload_stores_num_speakers(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf, num_speakers="3").headers["location"]
+    mid = int(loc.rstrip("/").rsplit("/", 1)[-1])
+    conn = client.app.state.db
+    assert meetings_mod.get(conn, mid).diarization_num_speakers == 3
+
+
+def test_upload_num_speakers_defaults_and_clamps(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    conn = client.app.state.db
+    # Blank/garbage -> 0 (auto).
+    csrf = csrf_from(client, "/")
+    mid = int(_upload(client, csrf, num_speakers="not-a-number").headers["location"].rstrip("/").rsplit("/", 1)[-1])
+    assert meetings_mod.get(conn, mid).diarization_num_speakers == 0
+    # Over-large -> clamped to the max.
+    csrf = csrf_from(client, "/")
+    mid = int(_upload(client, csrf, num_speakers="999").headers["location"].rstrip("/").rsplit("/", 1)[-1])
+    assert meetings_mod.get(conn, mid).diarization_num_speakers == 20
+
+
+def test_upload_form_hides_speakers_field_when_diarization_off(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    # Diarization defaults off in the test env -> no speakers field.
+    assert 'name="num_speakers"' not in client.get("/").text
+
+
+def test_upload_form_shows_speakers_field_when_diarization_on(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    from app.config import Settings
+    from app.routers import home as home_router
+
+    monkeypatch.setattr(
+        home_router, "get_settings",
+        lambda: Settings(SECRET_KEY="x" * 40, DIARIZATION_ENABLED=True),
+    )
+    assert 'name="num_speakers"' in client.get("/").text
 
 
 def test_upload_rejects_bad_extension(client, monkeypatch):
