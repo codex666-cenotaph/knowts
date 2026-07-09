@@ -72,6 +72,14 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   A deployment can still force one STT language for everyone with `STT_LANGUAGE`
   (`auto` = always autodetect, or a fixed ISO-639-1 code), which overrides the
   per-meeting choice.
+- **Speaker diarization (ready, not yet produced)**: the whisper backend we run
+  (`whisper-server`) can't do real "Speaker A/B" diarization — that needs a
+  separate pyannote/WhisperX service (ROCm on AMD, a HuggingFace token; a future
+  `Transcriber` adapter). knowts is *ready* for it: if a backend attaches a
+  `speaker` key to transcript segments, the transcript panel, `.txt`/`.srt`
+  exports, and the notes prompts all surface and attribute per speaker
+  automatically. With today's backend (no `speaker` key) everything renders
+  exactly as before. See `speaker_attributed_text` in `app/meetings.py`.
 
 ## Run locally
 

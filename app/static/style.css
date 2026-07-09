@@ -211,6 +211,7 @@ audio { width: 100%; margin: 0.5rem 0; }
 
 .segments { max-height: 320px; overflow-y: auto; font-size: 0.9rem; }
 .segments .ts { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.4rem; }
+.segments .speaker { color: var(--accent); font-weight: 600; }
 .transcript-text { white-space: pre-wrap; word-wrap: break-word; max-height: 320px; overflow-y: auto; background: var(--panel-2); padding: 0.8rem; border-radius: 8px; }
 
 .note { border-top: 1px solid var(--border); padding-top: 0.9rem; margin-top: 0.9rem; }

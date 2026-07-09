@@ -155,11 +155,16 @@ def _run_notes(
     # respond only in Dutch); "auto"/"en" leave the model to match the
     # transcript, so they pass through as no-ops in notes.generate.
     language_override = meeting.language if meeting else None
+    # Feed the LLM a speaker-attributed transcript when a diarizing backend
+    # labelled the segments; identical to transcript.text otherwise.
+    transcript_text = meetings.speaker_attributed_text(
+        transcript.segments, transcript.text
+    )
     try:
         markdown, model_used = notes.generate(
             client,
             version,
-            transcript.text,
+            transcript_text,
             transcript.segments,
             default_model=settings.llm_default_model,
             context_tokens=settings.llm_context_tokens,

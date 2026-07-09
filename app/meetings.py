@@ -253,6 +253,54 @@ def get_transcript(conn: sqlite3.Connection, meeting_id: int) -> Transcript | No
     )
 
 
+def segment_speaker(segment: dict) -> str | None:
+    """The speaker label on a segment, if a diarizing backend provided one.
+
+    Diarization is not produced by the whisper backend we run today, but the
+    ``Transcriber`` contract lets a future backend attach a ``speaker`` key to
+    each segment. This is the single place that reads it, so every consumer
+    degrades to no-speaker behavior identically."""
+    speaker = segment.get("speaker")
+    speaker = str(speaker).strip() if speaker is not None else ""
+    return speaker or None
+
+
+def speaker_attributed_text(
+    segments: list[dict] | None, fallback_text: str
+) -> str:
+    """Render a transcript as ``"Speaker A: …"`` lines, grouping consecutive
+    segments by the same speaker. Returns ``fallback_text`` unchanged when no
+    segment carries a speaker label (today's default), so callers can always
+    use this without checking first."""
+    if not segments or not any(segment_speaker(s) for s in segments):
+        return fallback_text
+
+    lines: list[str] = []
+    current: str | None = None
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if not buffer:
+            return
+        body = " ".join(buffer).strip()
+        if not body:
+            return
+        lines.append(f"{current}: {body}" if current else body)
+
+    for seg in segments:
+        speaker = segment_speaker(seg)
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        if speaker != current:
+            flush()
+            buffer = []
+            current = speaker
+        buffer.append(text)
+    flush()
+    return "\n".join(lines) if lines else fallback_text
+
+
 # --- Notes ---------------------------------------------------------------
 
 

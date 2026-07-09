@@ -217,6 +217,56 @@ def test_notes_use_dutch_override_for_dutch_meeting(env, monkeypatch):
     assert "Dutch" in captured_systems[0]
 
 
+def test_notes_receive_speaker_attributed_transcript(env, monkeypatch):
+    settings, conn = env
+
+    captured_users = []
+
+    class _CapturingLLM:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, *, model, system, user, temperature=None, max_tokens=None):
+            captured_users.append(user)
+            return "# Notes\n\ncontent"
+
+    class _DiarizingTranscriber:
+        def __init__(self, *a, **k):
+            pass
+
+        def transcribe(self, wav_path, *, model=None, language=None):
+            from app.transcriber import TranscriptResult
+
+            return TranscriptResult(
+                text="hi there good thanks",
+                segments=[
+                    {"start": 0.0, "end": 1.0, "text": "hi there", "speaker": "Speaker A"},
+                    {"start": 1.0, "end": 2.0, "text": "good thanks", "speaker": "Speaker B"},
+                ],
+                language="en",
+            )
+
+    monkeypatch.setattr(pipeline, "OpenAiCompatTranscriber", _DiarizingTranscriber)
+    monkeypatch.setattr(pipeline, "LLMClient", _CapturingLLM)
+
+    user = _make_user(conn)
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3"
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    summary = next(p for p in prompts.list_active(conn) if p.name == "summary")
+    jobs.create_transcribe_job(conn, meeting.id)
+    jobs.create_notes_job(conn, meeting.id, summary.id)
+
+    pipeline.process_meeting(conn, settings, meeting.id)
+
+    assert meetings.get(conn, meeting.id).status == meetings.STATUS_DONE
+    assert len(captured_users) == 1
+    # The prompt the LLM saw is speaker-attributed, not the plain transcript.
+    assert "Speaker A: hi there" in captured_users[0]
+    assert "Speaker B: good thanks" in captured_users[0]
+
+
 def test_generate_more_notes_reuses_transcript(env):
     settings, conn = env
     user = _make_user(conn)

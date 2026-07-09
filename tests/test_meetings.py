@@ -193,6 +193,37 @@ def test_archive_search_and_date_filter(client, monkeypatch):
     assert "No meetings match" in none
 
 
+def test_transcript_exports_include_speakers(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+    meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
+
+    conn = client.app.state.db
+    meetings_mod.save_transcript(
+        conn,
+        meeting_id,
+        text="hi there good thanks",
+        segments=[
+            {"start": 0.0, "end": 1.0, "text": "hi there", "speaker": "Speaker A"},
+            {"start": 1.0, "end": 2.0, "text": "good thanks", "speaker": "Speaker B"},
+        ],
+        language="en",
+    )
+
+    txt = client.get(f"{loc}/transcript.txt").text
+    assert "Speaker A: hi there" in txt and "Speaker B: good thanks" in txt
+
+    srt = client.get(f"{loc}/transcript.srt").text
+    assert "Speaker A: hi there" in srt
+
+    detail = client.get(loc).text
+    assert 'class="speaker">Speaker A:' in detail
+
+
 def test_delete_meeting(client, monkeypatch):
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")

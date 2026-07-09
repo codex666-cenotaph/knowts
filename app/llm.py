@@ -46,6 +46,16 @@ def fits_single_call(text: str, context_tokens: int, headroom_tokens: int) -> bo
     return len(text) <= _budget_chars(context_tokens, headroom_tokens)
 
 
+def _segment_line(segment: dict) -> str:
+    """One segment's text, prefixed with its speaker label when a diarizing
+    backend provided one (``"Speaker A: …"``). Each segment is self-describing
+    so attribution survives being cut into chunks; plain text otherwise."""
+    text = str(segment.get("text", "")).strip()
+    speaker = segment.get("speaker")
+    speaker = str(speaker).strip() if speaker is not None else ""
+    return f"{speaker}: {text}" if speaker and text else text
+
+
 def chunk_segments(
     segments: Sequence[dict],
     context_tokens: int,
@@ -59,7 +69,7 @@ def chunk_segments(
     ``overlap_segments`` so context isn't lost at the seams.
     """
     budget = _budget_chars(context_tokens, headroom_tokens)
-    texts = [str(s.get("text", "")).strip() for s in segments]
+    texts = [_segment_line(s) for s in segments]
     texts = [t for t in texts if t]
     if not texts:
         return []

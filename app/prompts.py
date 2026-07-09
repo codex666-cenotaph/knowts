@@ -386,6 +386,9 @@ _GENERIC_SYSTEM = (
     "meeting and must produce clear, accurate, well-structured Markdown. "
     "Always write your response in the same language as the transcript "
     "(e.g. a Dutch transcript gets Dutch notes). "
+    "If the transcript includes speaker labels (e.g. lines beginning with "
+    "'Speaker A:'), attribute discussion points, decisions, and action items to "
+    "the speaker who made them. "
     "Never invent facts that are not supported by the transcript."
 )
 

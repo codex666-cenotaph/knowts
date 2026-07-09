@@ -42,7 +42,7 @@
       <div class="segments">
         {% for s in transcript.segments %}
         <p><span class="ts">[{{ '%d:%02d'|format((s.start or 0)//60, (s.start or 0)%60) }}]</span>
-          {{ s.text }}</p>
+          {% if s.speaker %}<span class="speaker">{{ s.speaker }}:</span> {% endif %}{{ s.text }}</p>
         {% endfor %}
       </div>
     {% else %}

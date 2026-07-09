@@ -273,8 +273,11 @@ def transcript_txt(
     transcript = meetings_mod.get_transcript(conn, meeting_id)
     if transcript is None:
         return Response("No transcript.", status_code=status.HTTP_404_NOT_FOUND)
+    # Speaker-attributed when a diarizing backend labelled the segments; plain
+    # transcript text otherwise.
+    body = meetings_mod.speaker_attributed_text(transcript.segments, transcript.text)
     return Response(
-        transcript.text,
+        body,
         media_type="text/plain; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="meeting-{meeting_id}.txt"'
@@ -372,6 +375,9 @@ def _to_srt(segments: list[dict]) -> str:
         start = float(seg.get("start", 0) or 0)
         end = float(seg.get("end", start) or start)
         text = str(seg.get("text", "")).strip()
+        speaker = meetings_mod.segment_speaker(seg)
+        if speaker:
+            text = f"{speaker}: {text}"
         lines.append(str(i))
         lines.append(f"{_fmt_ts(start)} --> {_fmt_ts(end)}")
         lines.append(text)
