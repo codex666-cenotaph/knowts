@@ -311,6 +311,34 @@ def test_retry_button_shown_and_requeues_failed_jobs(client, monkeypatch):
     assert jobs_mod.has_failed_jobs(conn, meeting_id) is False
 
 
+def test_status_fragment_triggers_reload_when_finished(client, monkeypatch):
+    """When the pipeline finishes, the polled status fragment tells htmx to
+    reload the page so results appear without a manual refresh — but only once
+    work is actually done, and only for htmx (polling) requests."""
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+    meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
+    conn = client.app.state.db
+
+    # Still processing -> keep polling, no reload.
+    meetings_mod.set_status(conn, meeting_id, meetings_mod.STATUS_TRANSCRIBING)
+    active = client.get(f"{loc}/status", headers={"HX-Request": "true"})
+    assert active.headers.get("HX-Refresh") is None
+
+    # Finished -> ask htmx to reload the whole page.
+    meetings_mod.set_status(conn, meeting_id, meetings_mod.STATUS_DONE)
+    done = client.get(f"{loc}/status", headers={"HX-Request": "true"})
+    assert done.headers.get("HX-Refresh") == "true"
+
+    # A plain (non-htmx) request never gets the reload header.
+    plain = client.get(f"{loc}/status")
+    assert plain.headers.get("HX-Refresh") is None
+
+
 def test_retry_with_nothing_failed_reports_it(client, monkeypatch):
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")

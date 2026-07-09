@@ -17,6 +17,20 @@ def test_home_requires_login(client):
     assert r.headers["location"].startswith("/login")
 
 
+def test_htmx_is_vendored_not_cdn(client):
+    """The app must not depend on a third-party CDN at runtime — htmx is served
+    from /static so a self-hosted/offline deployment keeps working."""
+    login(client, "admin", "adminpass123")
+    home = client.get("/")
+    assert "/static/vendor/htmx.min.js" in home.text
+    assert "unpkg.com" not in home.text
+    # And the vendored file is actually served.
+    js = client.get("/static/vendor/htmx.min.js")
+    assert js.status_code == 200
+    assert "text/javascript" in js.headers["content-type"]
+    assert b"htmx" in js.content
+
+
 def test_login_and_access_home(client):
     r = login(client, "admin", "adminpass123")
     assert r.status_code == 303

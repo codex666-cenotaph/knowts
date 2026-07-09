@@ -5,7 +5,7 @@
 <p class="muted">{{ t('Upload a meeting recording; knowts transcribes it and generates notes with the prompts you pick.') }}</p>
 
 <form class="card upload-form" method="post" action="/meetings"
-      enctype="multipart/form-data">
+      enctype="multipart/form-data" data-prompt-picker data-upload-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
   <label>{{ t('Title') }}
@@ -39,7 +39,10 @@
   </label>
 
   <fieldset class="prompt-picker">
-    <legend>{{ t('Notes to generate') }}</legend>
+    <legend class="picker-legend">
+      {{ t('Notes to generate') }}
+      {% if prompts %}<button type="button" class="linkbtn" data-select-all>{{ t('Select all') }}</button>{% endif %}
+    </legend>
     {% if prompts %}
       {% for p in prompts %}
       <label class="check">
@@ -56,7 +59,8 @@
     {% endif %}
   </fieldset>
 
-  <button type="submit" class="btn">{{ t('Upload & process') }}</button>
+  <button type="submit" class="btn"
+          data-busy-label="{{ t('Uploading…') }}">{{ t('Upload & process') }}</button>
 </form>
 
 {% if recent %}
@@ -72,4 +76,30 @@
 </ul>
 <p><a href="/meetings">{{ t('All meetings →') }}</a></p>
 {% endif %}
+
+<script>
+(function () {
+  // "Select all / none" toggle for the notes prompt picker.
+  document.querySelectorAll('[data-select-all]').forEach(function (btn) {
+    var form = btn.closest('[data-prompt-picker]');
+    if (!form) return;
+    btn.addEventListener('click', function () {
+      var boxes = form.querySelectorAll('input[name="prompt_ids"]');
+      var makeAll = Array.prototype.some.call(boxes, function (b) { return !b.checked; });
+      boxes.forEach(function (b) { b.checked = makeAll; });
+    });
+  });
+  // Give the upload a clear busy state — large audio files take a while to
+  // send, and it stops accidental double-submits.
+  document.querySelectorAll('[data-upload-form]').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn && btn.dataset.busyLabel) {
+        btn.disabled = true;
+        btn.textContent = btn.dataset.busyLabel;
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

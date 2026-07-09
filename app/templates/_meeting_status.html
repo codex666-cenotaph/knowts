@@ -1,22 +1,30 @@
-{# HTMX polling fragment: meeting status + per-job progress. Stops polling once
-   no job is queued/running (PLAN.md §8.4). #}
+{# HTMX polling fragment: meeting status + per-job progress. Polls every 2s
+   while the meeting is active; the /status route sends HX-Refresh once the
+   pipeline finishes so the page reloads and reveals the results (PLAN.md §8.4). #}
 {% set active = meeting.status in ('processing', 'transcribing', 'generating') %}
 {% set has_failed = jobs | selectattr('status', 'equalto', 'error') | list | length > 0 %}
-<div id="meeting-status"
+<div id="meeting-status" class="status-panel {{ 'is-active' if active else '' }}"
      {% if active %}hx-get="/meetings/{{ meeting.id }}/status"
      hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
-  <p>{{ t('Status') }}: <span class="badge status-{{ meeting.status }}">{{ t(meeting.status) }}</span>
-    {% if active %}<span class="spinner" aria-hidden="true"></span>{% endif %}
+  <p class="status-line">
+    <span class="badge status-{{ meeting.status }}">{{ t(meeting.status) }}</span>
+    {% if active %}<span class="spinner" aria-hidden="true"></span>
+      <span class="muted">{{ t('Working — this page updates automatically.') }}</span>
+    {% elif has_failed %}<span class="muted">{{ t('Some steps failed.') }}</span>
+    {% endif %}
   </p>
+  {% if jobs %}
   <ul class="jobs">
     {% for j in jobs %}
-    <li>
+    <li class="job job-{{ j.status }}">
       <span class="badge status-{{ j.status }}">{{ t(j.status) }}</span>
-      {{ t(j.kind) }}{% if j.step %} · {{ j.step }}{% endif %}
+      <span class="job-kind">{{ t(j.kind) }}{% if j.step %} · <span class="muted">{{ j.step }}</span>{% endif %}</span>
+      {% if j.status == 'running' %}<span class="spinner" aria-hidden="true"></span>{% endif %}
       {% if j.error %}<div class="flash flash-err">{{ j.error }}</div>{% endif %}
     </li>
     {% endfor %}
   </ul>
+  {% endif %}
   {% if not active and has_failed %}
   <form method="post" action="/meetings/{{ meeting.id }}/retry" class="inline retry-failed">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -24,7 +32,9 @@
     <small class="muted">{{ t('Re-runs only the failed steps against the same upload.') }}</small>
   </form>
   {% endif %}
-  {% if not active %}
-  <p class="muted"><a href="/meetings/{{ meeting.id }}">{{ t('Refresh to see results ↻') }}</a></p>
+  {% if active %}
+  {# No-JS fallback: without htmx polling there is no auto-refresh, so offer a
+     manual reload while work is in flight. #}
+  <noscript><p class="muted"><a href="/meetings/{{ meeting.id }}">{{ t('Refresh to see progress ↻') }}</a></p></noscript>
   {% endif %}
 </div>

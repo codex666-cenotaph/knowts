@@ -33,6 +33,15 @@ _ALLOWED_EXT = {".mp3", ".m4a", ".wav", ".mp4", ".ogg", ".flac", ".webm", ".aac"
 _CHUNK = 1024 * 1024
 _MAX_SPEAKERS = 20
 
+# Meeting is still doing work (worker running or queued). While active, the
+# detail page polls the status fragment; once it leaves this set the pipeline
+# is finished (done or errored) and there is nothing left to poll.
+_ACTIVE_STATUSES = {
+    meetings_mod.STATUS_PROCESSING,
+    meetings_mod.STATUS_TRANSCRIBING,
+    meetings_mod.STATUS_GENERATING,
+}
+
 
 def _db(request: Request) -> sqlite3.Connection:
     return request.app.state.db
@@ -188,15 +197,17 @@ def detail(
 ):
     conn = _db(request)
     meeting = meetings_mod.get_owned(conn, meeting_id, user)
+    notes = meetings_mod.list_notes(conn, meeting_id)
     return render(
         request,
         "meeting_detail.html",
         meeting=meeting,
+        active=meeting.status in _ACTIVE_STATUSES,
         transcript=meetings_mod.get_transcript(conn, meeting_id),
-        notes=meetings_mod.list_notes(conn, meeting_id),
+        notes=notes,
         jobs=jobs_mod.list_for_meeting(conn, meeting_id),
         prompts=prompts_mod.list_active(conn),
-        rendered_notes=_render_notes(meetings_mod.list_notes(conn, meeting_id)),
+        rendered_notes=_render_notes(notes),
     )
 
 
@@ -204,15 +215,25 @@ def detail(
 def status_fragment(
     request: Request, meeting_id: int, user: User = Depends(auth_mod.require_user)
 ):
-    """HTMX polling fragment: job progress + meeting status."""
+    """HTMX polling fragment: job progress + meeting status.
+
+    The page only polls this endpoint while the meeting is active, so the first
+    response that comes back *inactive* means the pipeline just finished. We ask
+    htmx to reload the whole page (``HX-Refresh``) so the freshly produced
+    transcript and notes appear on their own — no manual "refresh to see
+    results" step. On a plain (non-htmx) request the header is simply ignored.
+    """
     conn = _db(request)
     meeting = meetings_mod.get_owned(conn, meeting_id, user)
-    return render(
+    response = render(
         request,
         "_meeting_status.html",
         meeting=meeting,
         jobs=jobs_mod.list_for_meeting(conn, meeting_id),
     )
+    if meeting.status not in _ACTIVE_STATUSES and request.headers.get("HX-Request"):
+        response.headers["HX-Refresh"] = "true"
+    return response
 
 
 @router.post("/{meeting_id}/notes")

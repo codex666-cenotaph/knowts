@@ -58,14 +58,17 @@
     <div class="note-tabs" data-note-tabs>
       <div class="tab-labels" role="tablist">
         {% for n in notes %}
-        <button type="button" class="tab-label" data-tab-target="note-{{ n.id }}"
-                {% if loop.first %}aria-selected="true"{% endif %}>
+        <button type="button" class="tab-label" role="tab" id="tab-note-{{ n.id }}"
+                aria-controls="note-{{ n.id }}" data-tab-target="note-{{ n.id }}"
+                aria-selected="{{ 'true' if loop.first else 'false' }}"
+                tabindex="{{ '0' if loop.first else '-1' }}">
           {{ n.prompt_name or t('Notes') }}
         </button>
         {% endfor %}
       </div>
       {% for n in notes %}
-      <article class="note tab-panel" id="note-{{ n.id }}" role="tabpanel">
+      <article class="note tab-panel" id="note-{{ n.id }}" role="tabpanel"
+               aria-labelledby="tab-note-{{ n.id }}">
         <header class="note-head">
           <span class="muted">{{ n.model_used or '' }}{% if n.model_used %} · {% endif %}{{ n.created_at[:16] }}</span>
           <span class="note-tools">
@@ -79,20 +82,29 @@
       </article>
       {% endfor %}
     </div>
+  {% elif active %}
+    <p class="muted">{{ t('Notes will appear here as soon as generation finishes.') }}</p>
+  {% elif transcript %}
+    <p class="muted">{{ t('No notes yet — pick one or more prompts below to generate them.') }}</p>
   {% else %}
     <p class="muted">{{ t('No notes generated yet.') }}</p>
   {% endif %}
 
   {% if transcript %}
-  <details class="more-notes">
+  <details class="more-notes" {% if not notes and not active %}open{% endif %}>
     <summary>{{ t('Generate more notes') }}</summary>
-    <form method="post" action="/meetings/{{ meeting.id }}/notes">
+    <form method="post" action="/meetings/{{ meeting.id }}/notes" data-prompt-picker>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <fieldset class="prompt-picker">
+        <legend class="picker-legend">
+          {{ t('Notes to generate') }}
+          <button type="button" class="linkbtn" data-select-all>{{ t('Select all') }}</button>
+        </legend>
         {% for p in prompts %}
         <label class="check">
           <input type="checkbox" name="prompt_ids" value="{{ p.id }}">
           <span>{{ p.name }}{% if p.is_official %} <span class="badge">🔒</span>{% endif %}</span>
+          {% if p.description %}<small class="muted">{{ p.description }}</small>{% endif %}
         </label>
         {% endfor %}
       </fieldset>
@@ -107,19 +119,39 @@
 // with JS they become tabs. Copy buttons lift the raw Markdown to the clipboard.
 (function () {
   document.querySelectorAll('[data-note-tabs]').forEach(function (root) {
-    var labels = root.querySelectorAll('.tab-label');
+    var labels = Array.prototype.slice.call(root.querySelectorAll('.tab-label'));
     var panels = root.querySelectorAll('.tab-panel');
     if (labels.length < 2) return;  // one note: nothing to tab between
-    function select(id) {
+    function select(id, focus) {
       panels.forEach(function (p) { p.style.display = (p.id === id) ? '' : 'none'; });
       labels.forEach(function (l) {
-        l.setAttribute('aria-selected', l.dataset.tabTarget === id ? 'true' : 'false');
+        var on = l.dataset.tabTarget === id;
+        l.setAttribute('aria-selected', on ? 'true' : 'false');
+        l.tabIndex = on ? 0 : -1;
+        if (on && focus) l.focus();
       });
     }
-    labels.forEach(function (l) {
+    labels.forEach(function (l, i) {
       l.addEventListener('click', function () { select(l.dataset.tabTarget); });
+      l.addEventListener('keydown', function (e) {
+        var next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null;
+        if (next === null) return;
+        e.preventDefault();
+        var t = labels[(next + labels.length) % labels.length];
+        select(t.dataset.tabTarget, true);
+      });
     });
     select(labels[0].dataset.tabTarget);
+  });
+  // "Select all / none" toggle inside a prompt picker.
+  document.querySelectorAll('[data-select-all]').forEach(function (btn) {
+    var form = btn.closest('[data-prompt-picker]');
+    if (!form) return;
+    btn.addEventListener('click', function () {
+      var boxes = form.querySelectorAll('input[name="prompt_ids"]');
+      var makeAll = Array.prototype.some.call(boxes, function (b) { return !b.checked; });
+      boxes.forEach(function (b) { b.checked = makeAll; });
+    });
   });
   document.querySelectorAll('[data-copy-note]').forEach(function (btn) {
     btn.addEventListener('click', function () {

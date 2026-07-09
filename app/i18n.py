@@ -74,6 +74,16 @@ _NL: dict[str, str] = {
     "Download .txt": "Download .txt",
     "Download .srt": "Download .srt",
     "No notes generated yet.": "Nog geen notities gegenereerd.",
+    "Notes will appear here as soon as generation finishes.":
+        "Notities verschijnen hier zodra het genereren klaar is.",
+    "No notes yet — pick one or more prompts below to generate them.":
+        "Nog geen notities — kies hieronder een of meer prompts om ze te genereren.",
+    "Select all": "Alles selecteren",
+    "Uploading…": "Uploaden…",
+    "Working — this page updates automatically.":
+        "Bezig — deze pagina wordt automatisch bijgewerkt.",
+    "Some steps failed.": "Sommige stappen zijn mislukt.",
+    "Refresh to see progress ↻": "Ververs om voortgang te zien ↻",
     "Copy": "Kopiëren",
     "Copied!": "Gekopieerd!",
     "Download .md": "Download .md",
