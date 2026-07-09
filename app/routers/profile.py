@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from .. import auth as auth_mod
 from .. import security
 from .. import users as users_mod
+from ..i18n import SUPPORTED_LANGUAGES
 from ..templating import render
 from ..users import User
 
@@ -24,7 +25,28 @@ def _db(request: Request) -> sqlite3.Connection:
 
 @router.get("/profile")
 def profile(request: Request, user: User = Depends(auth_mod.require_user)):
-    return render(request, "profile.html")
+    return render(request, "profile.html", languages=SUPPORTED_LANGUAGES)
+
+
+@router.post("/profile/language")
+def change_language(
+    request: Request,
+    language: str = Form(...),
+    csrf_token: str = Form(...),
+    ctx: auth_mod.AuthContext = Depends(auth_mod.resolve_auth),
+):
+    user = auth_mod.require_user(ctx)
+    auth_mod.verify_csrf(request, csrf_token, ctx)
+    conn = _db(request)
+
+    if language not in SUPPORTED_LANGUAGES:
+        return RedirectResponse(
+            "/profile?err=Unsupported+language.", status_code=status.HTTP_303_SEE_OTHER
+        )
+    users_mod.set_language(conn, user.id, language)
+    return RedirectResponse(
+        "/profile?msg=Language+updated.", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/profile/password")

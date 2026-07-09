@@ -3,7 +3,8 @@ convert meeting mp3 files to meeting notes on your own setup.
 
 See [PLAN.md](./PLAN.md) for the full design. Phase 0 (self-hosted whisper STT
 on the `link` machine) lives in [`deploy/`](./deploy/). This repo now also
-contains **Phase 1** (skeleton + auth) and **Phase 2** (the pipeline core).
+contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
+**Phase 3** (the full web UI).
 
 ## What's here (Phase 1)
 
@@ -36,15 +37,81 @@ contains **Phase 1** (skeleton + auth) and **Phase 2** (the pipeline core).
   it fits the context window, otherwise chunked map-reduce (segment-boundary
   chunking with overlap, then a reduce/merge pass).
 - **Prompts**: the official starter set (`summary`, `action-items`, `decisions`,
-  `minutes`, `qa-highlights`) is seeded on first run; full prompt management UI
-  lands in Phase 3.
+  `minutes`, `qa-highlights`) is seeded on first run.
 - **Meeting UI**: upload page, meetings archive, and a detail page with an audio
   player (HTTP range streaming), transcript panel with `.txt`/`.srt` download,
   rendered Markdown notes, "generate more notes" against the stored transcript
   (no re-transcription), live HTMX status polling, and delete.
 
-The polished archive/detail experience and the full prompt manager arrive in
-Phase 3.
+## What's here (Phase 3 — full web UI)
+
+- **Meetings archive** with title search and a meeting-date range filter
+  (ownership-scoped: members see their own, admins see all).
+- **Meeting detail polish**: generated note sets are shown as tabs (one per
+  prompt run), each with a copy button and a `.md` download, alongside the
+  existing audio player and `.txt`/`.srt` transcript exports.
+- **Prompt manager** (`/prompts`): list/search with official-vs-personal badges,
+  create, edit, clone, and archive. Edits are versioned (each save appends a new
+  prompt version so past notes stay attributable) and enforced server-side —
+  official prompts are editable by admins only, personal prompts by their owner
+  or an admin, and clone is available to everyone on every prompt. The editor
+  offers a live model dropdown from llama-swap's `/v1/models`, `{transcript}`
+  placeholder validation, and a **test-run** that previews a prompt against a
+  transcript snippet before saving.
+- **Profile language preference**: a language select (English/Dutch) on the
+  profile page (`app/i18n.py`) switches the whole interface, and becomes the
+  default for the per-meeting language picker below.
+- **Per-meeting language**: the upload page has a language dropdown (English /
+  Dutch / Auto-detect) defaulting to the user's interface language. The chosen
+  language (a) pins the whisper transcription language so a Dutch meeting is
+  transcribed in Dutch instead of whisper autodetecting and sometimes returning
+  an English transcript, and (b) makes note generation (and the prompt
+  manager's test-run preview) append a "respond only in `<language>`"
+  instruction — overriding the starter prompts' default "same language as the
+  transcript" behavior. Auto-detect leaves both to the model/transcript.
+  A deployment can still force one STT language for everyone with `STT_LANGUAGE`
+  (`auto` = always autodetect, or a fixed ISO-639-1 code), which overrides the
+  per-meeting choice.
+- **Speaker diarization (optional, CPU, off by default)**: `whisper-server` can't
+  label speakers itself, so knowts can run diarization in-container via
+  **sherpa-onnx** — the full VAD + segmentation + embedding + clustering pipeline as
+  **ONNX on CPU** (no GPU, no ROCm, no HuggingFace token; non-gated models).
+  When `DIARIZATION_ENABLED=true`, each transcript segment gets a `speaker`, which
+  the transcript panel, `.txt`/`.srt` exports, and the notes prompts all surface and
+  attribute automatically. When off (default), transcripts render exactly as before.
+  Diarization is best-effort — if the deps/models are missing or a run fails, the
+  transcript is saved unlabelled and transcription is never blocked. See
+  `app/diarize.py` and the setup below.
+  When enabled, the upload form shows a **Speakers** field (0 = auto-detect) — set
+  the exact participant count per meeting if auto-detect splits one person across
+  several speakers; it overrides the global `DIARIZATION_NUM_SPEAKERS` for that
+  meeting. `DIARIZATION_CLUSTER_THRESHOLD` (higher = fewer speakers) is the global
+  knob for the auto case.
+
+### Enabling diarization
+
+```sh
+# 1. Extra deps (CPU-only; not in the base image):
+pip install -r requirements-diarization.txt
+
+# 2. Download the two non-gated ONNX models (no HF token needed) — e.g.:
+mkdir -p ./data/models/diarization
+#   segmentation (MIT pyannote-3.0 exported to ONNX, ~6.6 MB) and an embedding
+#   model, from the k2-fsa sherpa-onnx model releases:
+#   https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models
+#   https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+# Place them and point the env vars at the files.
+
+# 3. Enable it:
+export DIARIZATION_ENABLED=true
+export DIARIZATION_SEGMENTATION_MODEL=./data/models/diarization/segmentation.onnx
+export DIARIZATION_EMBEDDING_MODEL=./data/models/diarization/embedding.onnx
+# Optional: DIARIZATION_NUM_SPEAKERS (0=auto), DIARIZATION_CLUSTER_THRESHOLD, DIARIZATION_NUM_THREADS
+```
+
+Diarization runs on the same 16 kHz mono WAV whisper uses, on CPU, so the GPU stays
+dedicated to whisper. (In the Docker image, `pip install -r requirements-diarization.txt`
+in the Dockerfile and mount/copy the models into the data volume.)
 
 ## Run locally
 

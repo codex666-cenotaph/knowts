@@ -13,8 +13,11 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-diarization.txt ./
+# Base deps + the optional CPU speaker-diarization deps (sherpa-onnx, numpy).
+# They're inert unless DIARIZATION_ENABLED=true and the ONNX models are mounted
+# under /data (see README "Enabling diarization").
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-diarization.txt
 
 COPY app ./app
 

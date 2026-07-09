@@ -24,3 +24,12 @@ services:
       MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-500}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       DATA_DIR: /data
+      # --- speaker diarization (optional, off by default) ---
+      # Flip DIARIZATION_ENABLED=true and drop the ONNX models into
+      # ./data/models/diarization/ on the host (paths below are container paths).
+      DIARIZATION_ENABLED: "${DIARIZATION_ENABLED:-false}"
+      DIARIZATION_SEGMENTATION_MODEL: "${DIARIZATION_SEGMENTATION_MODEL:-/data/models/diarization/segmentation.onnx}"
+      DIARIZATION_EMBEDDING_MODEL: "${DIARIZATION_EMBEDDING_MODEL:-/data/models/diarization/embedding.onnx}"
+      DIARIZATION_NUM_SPEAKERS: "${DIARIZATION_NUM_SPEAKERS:-0}"
+      DIARIZATION_CLUSTER_THRESHOLD: "${DIARIZATION_CLUSTER_THRESHOLD:-0.5}"
+      DIARIZATION_NUM_THREADS: "${DIARIZATION_NUM_THREADS:-1}"

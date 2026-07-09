@@ -21,6 +21,7 @@ from .. import jobs as jobs_mod
 from .. import meetings as meetings_mod
 from .. import prompts as prompts_mod
 from ..config import Settings, get_settings
+from ..i18n import SUPPORTED_LANGUAGES
 from ..templating import render
 from ..users import User
 
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/meetings")
 
 _ALLOWED_EXT = {".mp3", ".m4a", ".wav", ".mp4", ".ogg", ".flac", ".webm", ".aac"}
 _CHUNK = 1024 * 1024
+_MAX_SPEAKERS = 20
 
 
 def _db(request: Request) -> sqlite3.Connection:
@@ -48,13 +50,33 @@ def _audio_file(settings: Settings, filename: str) -> Path:
 
 
 @router.get("")
-def archive(request: Request, user: User = Depends(auth_mod.require_user)):
+def archive(
+    request: Request,
+    q: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    user: User = Depends(auth_mod.require_user),
+):
     conn = _db(request)
-    rows = meetings_mod.list_for_user(conn, user)
+    rows = meetings_mod.search_for_user(
+        conn,
+        user,
+        query=q.strip() or None,
+        date_from=date_from.strip() or None,
+        date_to=date_to.strip() or None,
+    )
     items = [
         {"meeting": m, "notes": meetings_mod.note_count(conn, m.id)} for m in rows
     ]
-    return render(request, "meetings_list.html", items=items)
+    return render(
+        request,
+        "meetings_list.html",
+        items=items,
+        q=q,
+        date_from=date_from,
+        date_to=date_to,
+        filtered=bool(q or date_from or date_to),
+    )
 
 
 # --- Upload --------------------------------------------------------------
@@ -65,6 +87,8 @@ async def upload(
     request: Request,
     title: str = Form(...),
     meeting_date: str = Form(""),
+    language: str = Form(""),
+    num_speakers: str = Form(""),
     prompt_ids: list[int] = Form(default=[]),
     csrf_token: str = Form(...),
     file: UploadFile = File(...),
@@ -87,6 +111,20 @@ async def upload(
     if ext not in _ALLOWED_EXT:
         return fail("Unsupported+audio+format.")
 
+    # Meeting language: the picked value, else fall back to the user's own
+    # interface language, else autodetect. "auto" is always valid.
+    language = language.strip().lower()
+    if language != "auto" and language not in SUPPORTED_LANGUAGES:
+        language = user.language if user.language in SUPPORTED_LANGUAGES else "auto"
+
+    # Expected speaker count for diarization: 0/blank = auto-detect. Clamp to a
+    # sane range; ignore garbage.
+    try:
+        speakers = int(num_speakers)
+    except (TypeError, ValueError):
+        speakers = 0
+    speakers = max(0, min(speakers, _MAX_SPEAKERS))
+
     # Create the meeting first so the stored file can be named by its id
     # (PLAN.md §7: /data/audio/<meeting_id>.<ext>).
     meeting = meetings_mod.create(
@@ -95,6 +133,8 @@ async def upload(
         title=title,
         meeting_date=meeting_date.strip() or None,
         filename=None,
+        language=language,
+        diarization_num_speakers=speakers,
     )
     filename = f"{meeting.id}{ext}"
     dest = _audio_file(settings, filename)
@@ -244,8 +284,11 @@ def transcript_txt(
     transcript = meetings_mod.get_transcript(conn, meeting_id)
     if transcript is None:
         return Response("No transcript.", status_code=status.HTTP_404_NOT_FOUND)
+    # Speaker-attributed when a diarizing backend labelled the segments; plain
+    # transcript text otherwise.
+    body = meetings_mod.speaker_attributed_text(transcript.segments, transcript.text)
     return Response(
-        transcript.text,
+        body,
         media_type="text/plain; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="meeting-{meeting_id}.txt"'
@@ -270,6 +313,28 @@ def transcript_srt(
         media_type="application/x-subrip; charset=utf-8",
         headers={
             "Content-Disposition": f'attachment; filename="meeting-{meeting_id}.srt"'
+        },
+    )
+
+
+@router.get("/{meeting_id}/notes/{note_id}.md")
+def note_markdown(
+    request: Request,
+    meeting_id: int,
+    note_id: int,
+    user: User = Depends(auth_mod.require_user),
+):
+    conn = _db(request)
+    meetings_mod.get_owned(conn, meeting_id, user)  # ownership check
+    note = meetings_mod.get_note(conn, note_id)
+    if note is None or note.meeting_id != meeting_id:
+        return Response("Note not found.", status_code=status.HTTP_404_NOT_FOUND)
+    slug = (note.prompt_name or "notes").replace(" ", "-")
+    return Response(
+        note.markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="meeting-{meeting_id}-{slug}.md"'
         },
     )
 
@@ -321,6 +386,9 @@ def _to_srt(segments: list[dict]) -> str:
         start = float(seg.get("start", 0) or 0)
         end = float(seg.get("end", start) or start)
         text = str(seg.get("text", "")).strip()
+        speaker = meetings_mod.segment_speaker(seg)
+        if speaker:
+            text = f"{speaker}: {text}"
         lines.append(str(i))
         lines.append(f"{_fmt_ts(start)} --> {_fmt_ts(end)}")
         lines.append(text)

@@ -25,7 +25,7 @@ from .bootstrap import bootstrap_admin
 from .config import get_settings
 from .jobs import PipelineWorker
 from .rate_limit import LoginRateLimiter
-from .routers import admin_users, auth_routes, home, meetings, profile
+from .routers import admin_users, auth_routes, home, meetings, profile, prompts
 from .templating import render
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -73,6 +73,7 @@ app.include_router(auth_routes.router)
 app.include_router(home.router)
 app.include_router(meetings.router)
 app.include_router(profile.router)
+app.include_router(prompts.router)
 app.include_router(admin_users.router)
 
 

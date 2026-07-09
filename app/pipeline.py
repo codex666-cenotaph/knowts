@@ -17,7 +17,7 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from . import audio, jobs, meetings, notes, prompts
+from . import audio, diarize, jobs, meetings, notes, prompts
 from .audio import AudioError
 from .config import Settings
 from .llm import LLMClient, LLMError
@@ -28,6 +28,25 @@ log = logging.getLogger("knowts.pipeline")
 
 def _audio_path(settings: Settings, filename: str) -> Path:
     return settings.audio_dir / filename
+
+
+def _stt_language(settings: Settings, meeting: meetings.Meeting) -> str | None:
+    """Decide the language hint to send to whisper.
+
+    Returns ``None`` to let whisper autodetect. A deployment-wide
+    ``STT_LANGUAGE`` setting wins (a fixed code pins it for everyone, "auto"
+    forces autodetect); otherwise the per-meeting language chosen at upload
+    applies, with "auto" meaning autodetect.
+    """
+    configured = (settings.stt_language or "").strip().lower()
+    if configured == "auto":
+        return None
+    if configured:
+        return configured
+    language = (meeting.language or "").strip().lower()
+    if language and language != "auto":
+        return language
+    return None
 
 
 def process_meeting(conn: sqlite3.Connection, settings: Settings, meeting_id: int) -> None:
@@ -90,8 +109,20 @@ def _run_transcribe(
     transcriber = OpenAiCompatTranscriber(
         settings.effective_stt_base_url, settings.stt_model
     )
+    language = _stt_language(settings, meeting)
     try:
-        result = transcriber.transcribe(wav, model=settings.stt_model)
+        result = transcriber.transcribe(
+            wav, model=settings.stt_model, language=language
+        )
+        # Optional speaker diarization on the same WAV, before it's deleted.
+        # Best-effort: returns segments unchanged if disabled or it fails.
+        segments = result.segments
+        if settings.diarization_enabled and segments:
+            jobs.set_step(conn, job_id, "diarizing")
+            segments = diarize.apply_diarization(
+                settings, wav, segments,
+                num_speakers=meeting.diarization_num_speakers,
+            )
     except TranscriptionError as exc:
         jobs.mark_error(conn, job_id, str(exc))
         log.error("transcription failed for meeting %d: %s", meeting_id, exc)
@@ -103,7 +134,7 @@ def _run_transcribe(
         conn,
         meeting_id,
         text=result.text,
-        segments=result.segments,
+        segments=segments,
         language=result.language,
     )
     jobs.mark_done(conn, job_id)
@@ -128,14 +159,25 @@ def _run_notes(
         return False
 
     jobs.mark_running(conn, job.id, step=f"notes:{prompt.name}")
+    meeting = meetings.get(conn, job.meeting_id)
+    # The meeting's chosen language forces the notes language (e.g. "nl" ->
+    # respond only in Dutch); "auto"/"en" leave the model to match the
+    # transcript, so they pass through as no-ops in notes.generate.
+    language_override = meeting.language if meeting else None
+    # Feed the LLM a speaker-attributed transcript when a diarizing backend
+    # labelled the segments; identical to transcript.text otherwise.
+    transcript_text = meetings.speaker_attributed_text(
+        transcript.segments, transcript.text
+    )
     try:
         markdown, model_used = notes.generate(
             client,
             version,
-            transcript.text,
+            transcript_text,
             transcript.segments,
             default_model=settings.llm_default_model,
             context_tokens=settings.llm_context_tokens,
+            language_override=language_override,
         )
     except LLMError as exc:
         jobs.mark_error(conn, job.id, str(exc))

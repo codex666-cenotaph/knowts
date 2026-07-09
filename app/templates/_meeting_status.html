@@ -4,19 +4,19 @@
 <div id="meeting-status"
      {% if active %}hx-get="/meetings/{{ meeting.id }}/status"
      hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
-  <p>Status: <span class="badge status-{{ meeting.status }}">{{ meeting.status }}</span>
+  <p>{{ t('Status') }}: <span class="badge status-{{ meeting.status }}">{{ t(meeting.status) }}</span>
     {% if active %}<span class="spinner" aria-hidden="true"></span>{% endif %}
   </p>
   <ul class="jobs">
     {% for j in jobs %}
     <li>
-      <span class="badge status-{{ j.status }}">{{ j.status }}</span>
-      {{ j.kind }}{% if j.step %} · {{ j.step }}{% endif %}
+      <span class="badge status-{{ j.status }}">{{ t(j.status) }}</span>
+      {{ t(j.kind) }}{% if j.step %} · {{ j.step }}{% endif %}
       {% if j.error %}<div class="flash flash-err">{{ j.error }}</div>{% endif %}
     </li>
     {% endfor %}
   </ul>
   {% if not active %}
-  <p class="muted"><a href="/meetings/{{ meeting.id }}">Refresh to see results ↻</a></p>
+  <p class="muted"><a href="/meetings/{{ meeting.id }}">{{ t('Refresh to see results ↻') }}</a></p>
   {% endif %}
 </div>

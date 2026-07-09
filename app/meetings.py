@@ -36,6 +36,12 @@ class Meeting:
     duration_s: float | None
     status: str
     created_at: str
+    # Transcription/notes language chosen at upload: an ISO-639-1 code
+    # (e.g. "en", "nl") or "auto" to let whisper autodetect.
+    language: str = "auto"
+    # Expected speaker count for diarization, chosen at upload; 0 = auto-detect
+    # (cluster by threshold). Only used when diarization is enabled.
+    diarization_num_speakers: int = 0
 
 
 @dataclass(frozen=True)
@@ -68,7 +74,15 @@ def _row_to_meeting(row: sqlite3.Row) -> Meeting:
         duration_s=row["duration_s"],
         status=row["status"],
         created_at=row["created_at"],
+        language=row["language"],
+        diarization_num_speakers=row["diarization_num_speakers"],
     )
+
+
+_MEETING_COLUMNS = (
+    "id, user_id, title, meeting_date, filename, duration_s, status, "
+    "created_at, language, diarization_num_speakers"
+)
 
 
 # --- Meetings ------------------------------------------------------------
@@ -81,11 +95,22 @@ def create(
     title: str,
     meeting_date: str | None,
     filename: str | None,
+    language: str = "auto",
+    diarization_num_speakers: int = 0,
 ) -> Meeting:
     cur = conn.execute(
-        "INSERT INTO meetings (user_id, title, meeting_date, filename, status) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (user_id, title, meeting_date, filename, STATUS_PROCESSING),
+        "INSERT INTO meetings "
+        "(user_id, title, meeting_date, filename, status, language, diarization_num_speakers) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            title,
+            meeting_date,
+            filename,
+            STATUS_PROCESSING,
+            language,
+            diarization_num_speakers,
+        ),
     )
     conn.commit()
     meeting = get(conn, cur.lastrowid)
@@ -95,8 +120,7 @@ def create(
 
 def get(conn: sqlite3.Connection, meeting_id: int) -> Meeting | None:
     row = conn.execute(
-        "SELECT id, user_id, title, meeting_date, filename, duration_s, status, "
-        "created_at FROM meetings WHERE id = ?",
+        f"SELECT {_MEETING_COLUMNS} FROM meetings WHERE id = ?",
         (meeting_id,),
     ).fetchone()
     return _row_to_meeting(row) if row else None
@@ -117,16 +141,52 @@ def get_owned(conn: sqlite3.Connection, meeting_id: int, user: User) -> Meeting:
 def list_for_user(conn: sqlite3.Connection, user: User) -> list[Meeting]:
     if user.is_admin:
         rows = conn.execute(
-            "SELECT id, user_id, title, meeting_date, filename, duration_s, "
-            "status, created_at FROM meetings ORDER BY created_at DESC"
+            f"SELECT {_MEETING_COLUMNS} FROM meetings ORDER BY created_at DESC"
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT id, user_id, title, meeting_date, filename, duration_s, "
-            "status, created_at FROM meetings WHERE user_id = ? "
+            f"SELECT {_MEETING_COLUMNS} FROM meetings WHERE user_id = ? "
             "ORDER BY created_at DESC",
             (user.id,),
         ).fetchall()
+    return [_row_to_meeting(r) for r in rows]
+
+
+def search_for_user(
+    conn: sqlite3.Connection,
+    user: User,
+    *,
+    query: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[Meeting]:
+    """Archive listing with optional title search and meeting-date range
+    (PLAN.md §8.3). Ownership scoping matches ``list_for_user`` — members see
+    only their own meetings, admins see all.
+
+    The date range matches against ``meeting_date`` when set, otherwise the
+    creation date, so meetings without an explicit date still filter sensibly.
+    """
+    sql = f"SELECT {_MEETING_COLUMNS} FROM meetings"
+    where: list[str] = []
+    params: list[object] = []
+    if not user.is_admin:
+        where.append("user_id = ?")
+        params.append(user.id)
+    if query:
+        where.append("title LIKE ?")
+        params.append(f"%{query}%")
+    effective_date = "COALESCE(meeting_date, substr(created_at, 1, 10))"
+    if date_from:
+        where.append(f"{effective_date} >= ?")
+        params.append(date_from)
+    if date_to:
+        where.append(f"{effective_date} <= ?")
+        params.append(date_to)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC"
+    rows = conn.execute(sql, params).fetchall()
     return [_row_to_meeting(r) for r in rows]
 
 
@@ -207,6 +267,54 @@ def get_transcript(conn: sqlite3.Connection, meeting_id: int) -> Transcript | No
     )
 
 
+def segment_speaker(segment: dict) -> str | None:
+    """The speaker label on a segment, if a diarizing backend provided one.
+
+    Diarization is not produced by the whisper backend we run today, but the
+    ``Transcriber`` contract lets a future backend attach a ``speaker`` key to
+    each segment. This is the single place that reads it, so every consumer
+    degrades to no-speaker behavior identically."""
+    speaker = segment.get("speaker")
+    speaker = str(speaker).strip() if speaker is not None else ""
+    return speaker or None
+
+
+def speaker_attributed_text(
+    segments: list[dict] | None, fallback_text: str
+) -> str:
+    """Render a transcript as ``"Speaker A: …"`` lines, grouping consecutive
+    segments by the same speaker. Returns ``fallback_text`` unchanged when no
+    segment carries a speaker label (today's default), so callers can always
+    use this without checking first."""
+    if not segments or not any(segment_speaker(s) for s in segments):
+        return fallback_text
+
+    lines: list[str] = []
+    current: str | None = None
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if not buffer:
+            return
+        body = " ".join(buffer).strip()
+        if not body:
+            return
+        lines.append(f"{current}: {body}" if current else body)
+
+    for seg in segments:
+        speaker = segment_speaker(seg)
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        if speaker != current:
+            flush()
+            buffer = []
+            current = speaker
+        buffer.append(text)
+    flush()
+    return "\n".join(lines) if lines else fallback_text
+
+
 # --- Notes ---------------------------------------------------------------
 
 
@@ -227,25 +335,37 @@ def save_note(
     return cur.lastrowid
 
 
+def _row_to_note(r: sqlite3.Row) -> Note:
+    return Note(
+        id=r["id"],
+        meeting_id=r["meeting_id"],
+        prompt_version_id=r["prompt_version_id"],
+        model_used=r["model_used"],
+        markdown=r["markdown"],
+        created_at=r["created_at"],
+        prompt_name=r["prompt_name"],
+    )
+
+
+_NOTE_SELECT = (
+    "SELECT n.id, n.meeting_id, n.prompt_version_id, n.model_used, "
+    "       n.markdown, n.created_at, p.name AS prompt_name "
+    "FROM notes n "
+    "LEFT JOIN prompt_versions pv ON pv.id = n.prompt_version_id "
+    "LEFT JOIN prompts p ON p.id = pv.prompt_id "
+)
+
+
+def get_note(conn: sqlite3.Connection, note_id: int) -> Note | None:
+    row = conn.execute(
+        _NOTE_SELECT + "WHERE n.id = ?", (note_id,)
+    ).fetchone()
+    return _row_to_note(row) if row else None
+
+
 def list_notes(conn: sqlite3.Connection, meeting_id: int) -> list[Note]:
     rows = conn.execute(
-        "SELECT n.id, n.meeting_id, n.prompt_version_id, n.model_used, "
-        "       n.markdown, n.created_at, p.name AS prompt_name "
-        "FROM notes n "
-        "LEFT JOIN prompt_versions pv ON pv.id = n.prompt_version_id "
-        "LEFT JOIN prompts p ON p.id = pv.prompt_id "
-        "WHERE n.meeting_id = ? ORDER BY n.created_at, n.id",
+        _NOTE_SELECT + "WHERE n.meeting_id = ? ORDER BY n.created_at, n.id",
         (meeting_id,),
     ).fetchall()
-    return [
-        Note(
-            id=r["id"],
-            meeting_id=r["meeting_id"],
-            prompt_version_id=r["prompt_version_id"],
-            model_used=r["model_used"],
-            markdown=r["markdown"],
-            created_at=r["created_at"],
-            prompt_name=r["prompt_name"],
-        )
-        for r in rows
-    ]
+    return [_row_to_note(r) for r in rows]

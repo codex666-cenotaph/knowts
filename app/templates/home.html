@@ -1,59 +1,75 @@
 {% extends "base.html" %}
-{% block title %}Upload · knowts{% endblock %}
+{% block title %}{{ t('Upload') }} · knowts{% endblock %}
 {% block content %}
-<h1>New meeting</h1>
-<p class="muted">Upload a meeting recording; knowts transcribes it and generates
-  notes with the prompts you pick.</p>
+<h1>{{ t('New meeting') }}</h1>
+<p class="muted">{{ t('Upload a meeting recording; knowts transcribes it and generates notes with the prompts you pick.') }}</p>
 
 <form class="card upload-form" method="post" action="/meetings"
       enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-  <label>Title
+  <label>{{ t('Title') }}
     <input type="text" name="title" required placeholder="Weekly sync">
   </label>
 
-  <label>Meeting date
+  <label>{{ t('Meeting date') }}
     <input type="date" name="meeting_date">
   </label>
 
-  <label>Audio file
+  <label>{{ t('Language') }}
+    <select name="language">
+      {% for code, label in languages.items() %}
+      <option value="{{ code }}" {% if code == user.language %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+      <option value="auto" {% if user.language not in languages %}selected{% endif %}>{{ t('Auto-detect') }}</option>
+    </select>
+    <small class="muted">{{ t('Transcription and notes use this language. Auto-detect lets whisper guess.') }}</small>
+  </label>
+
+  {% if diarization_enabled %}
+  <label>{{ t('Speakers') }}
+    <input type="number" name="num_speakers" min="0" max="20" value="0" step="1">
+    <small class="muted">{{ t('How many people speak. 0 = auto-detect. Set the exact number if auto splits one person into several.') }}</small>
+  </label>
+  {% endif %}
+
+  <label>{{ t('Audio file') }}
     <input type="file" name="file" accept="audio/*,.mp3,.m4a,.wav,.mp4,.ogg,.flac"
            required>
   </label>
 
   <fieldset class="prompt-picker">
-    <legend>Notes to generate</legend>
+    <legend>{{ t('Notes to generate') }}</legend>
     {% if prompts %}
       {% for p in prompts %}
       <label class="check">
         <input type="checkbox" name="prompt_ids" value="{{ p.id }}"
                {% if p.name == 'summary' %}checked{% endif %}>
         <span>{{ p.name }}
-          {% if p.is_official %}<span class="badge" title="official">🔒</span>{% endif %}
+          {% if p.is_official %}<span class="badge" title="{{ t('official') }}">🔒</span>{% endif %}
         </span>
         {% if p.description %}<small class="muted">{{ p.description }}</small>{% endif %}
       </label>
       {% endfor %}
     {% else %}
-      <p class="muted">No prompts available.</p>
+      <p class="muted">{{ t('No prompts available.') }}</p>
     {% endif %}
   </fieldset>
 
-  <button type="submit" class="btn">Upload &amp; process</button>
+  <button type="submit" class="btn">{{ t('Upload & process') }}</button>
 </form>
 
 {% if recent %}
-<h2>Recent meetings</h2>
+<h2>{{ t('Recent meetings') }}</h2>
 <ul class="recent">
   {% for m in recent %}
   <li>
     <a href="/meetings/{{ m.id }}">{{ m.title }}</a>
-    <span class="badge status-{{ m.status }}">{{ m.status }}</span>
+    <span class="badge status-{{ m.status }}">{{ t(m.status) }}</span>
     <span class="muted">{{ m.meeting_date or m.created_at[:10] }}</span>
   </li>
   {% endfor %}
 </ul>
-<p><a href="/meetings">All meetings →</a></p>
+<p><a href="/meetings">{{ t('All meetings →') }}</a></p>
 {% endif %}
 {% endblock %}

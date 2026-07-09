@@ -26,19 +26,51 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 1.25rem;
   padding: 0.75rem 1.25rem;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 .brand { font-weight: 700; font-size: 1.15rem; color: var(--text); }
-.topbar nav { display: flex; gap: 1rem; }
+.topbar-menu { display: flex; align-items: center; gap: 1.25rem; flex: 1 1 auto; }
+.topbar nav { display: flex; gap: 1rem; flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); }
 .topbar nav a:hover { color: var(--text); text-decoration: none; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
 .whoami { color: var(--muted); font-size: 0.9rem; }
+
+/* Hamburger toggle — visible only on narrow screens (see media query below).
+   The checkbox is visually hidden but stays keyboard-focusable; each page
+   load resets it, so the menu opens closed on mobile. */
+.nav-toggle { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.nav-burger { display: none; }
+
+@media (max-width: 640px) {
+  .topbar { gap: 0.75rem; }
+  .nav-burger {
+    display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    margin-left: auto; width: 42px; height: 36px; padding: 0 9px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); cursor: pointer;
+  }
+  .nav-burger span { display: block; height: 2px; background: var(--text); border-radius: 2px; }
+  .nav-toggle:focus ~ .nav-burger { outline: 2px solid var(--accent); }
+  .topbar-menu {
+    display: none; order: 3; flex-basis: 100%;
+    flex-direction: column; align-items: stretch; gap: 0.5rem;
+  }
+  .nav-toggle:checked ~ .topbar-menu { display: flex; }
+  .topbar nav { flex-direction: column; gap: 0.15rem; }
+  .topbar nav a { padding: 0.45rem 0.15rem; }
+  .topbar-right {
+    margin-left: 0; justify-content: space-between;
+    border-top: 1px solid var(--border); padding-top: 0.6rem;
+  }
+}
 
 .badge {
   display: inline-block;
@@ -81,7 +113,7 @@ h2 { font-size: 1.2rem; margin: 0 0 0.75rem; }
 .stack.narrow { max-width: 360px; }
 .stack label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: var(--muted); }
 
-input, select {
+input, select, textarea {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
@@ -89,7 +121,9 @@ input, select {
   border-radius: 8px;
   font-size: 0.95rem;
 }
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+textarea { font-family: inherit; width: 100%; resize: vertical; }
+textarea[readonly], input[readonly] { opacity: 0.7; cursor: not-allowed; }
 
 button {
   cursor: pointer;
@@ -177,6 +211,7 @@ audio { width: 100%; margin: 0.5rem 0; }
 
 .segments { max-height: 320px; overflow-y: auto; font-size: 0.9rem; }
 .segments .ts { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.4rem; }
+.segments .speaker { color: var(--accent); font-weight: 600; }
 .transcript-text { white-space: pre-wrap; word-wrap: break-word; max-height: 320px; overflow-y: auto; background: var(--panel-2); padding: 0.8rem; border-radius: 8px; }
 
 .note { border-top: 1px solid var(--border); padding-top: 0.9rem; margin-top: 0.9rem; }
@@ -184,3 +219,50 @@ audio { width: 100%; margin: 0.5rem 0; }
 .note-body :first-child { margin-top: 0; }
 .more-notes { margin-top: 1rem; }
 .more-notes summary { cursor: pointer; color: var(--accent); }
+
+/* --- Phase 3: archive filter, prompt manager, notes tabs --- */
+.filter-form { margin: 1rem 0 1.5rem; align-items: flex-end; gap: 0.75rem; }
+.filter-form input[type="search"] { flex: 2 1 200px; }
+.date-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); flex: 0 1 150px; }
+/* Reset the inherited .row-form flex: inside this column container flex-basis
+   would otherwise stretch the date input vertically (making it very tall). */
+.date-field input { flex: none; width: 100%; padding: 0.45rem 0.5rem; }
+
+@media (max-width: 640px) {
+  .filter-form input[type="search"] { flex: 1 1 100%; }
+  .filter-form .date-field { flex: 1 1 40%; }
+  .filter-form button { flex: 1 1 auto; }
+}
+.inline-check { display: flex; align-items: center; gap: 0.4rem; grid-template-columns: none; }
+.inline-check input { grid-row: auto; }
+
+.prompt-editor { max-width: 760px; }
+.prompt-editor label { color: var(--muted); font-size: 0.9rem; }
+.prompt-editor textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; }
+.field-row { display: flex; gap: 1rem; flex-wrap: wrap; }
+.field-row label { flex: 1 1 160px; }
+.hint { font-size: 0.8rem; color: var(--muted); }
+code { background: var(--panel-2); padding: 0.05rem 0.35rem; border-radius: 5px; font-size: 0.85em; }
+
+.version-history { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.version-history li { border-left: 2px solid var(--border); padding-left: 0.8rem; }
+.version-template {
+  white-space: pre-wrap; word-wrap: break-word; background: var(--panel-2);
+  padding: 0.6rem 0.8rem; border-radius: 8px; font-size: 0.82rem; margin: 0.4rem 0 0;
+  max-height: 180px; overflow-y: auto;
+}
+
+/* htmx spinner: hidden until a request is in flight */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline-block; }
+
+.note-tabs .tab-labels { display: flex; flex-wrap: wrap; gap: 0.3rem; border-bottom: 1px solid var(--border); margin-bottom: 0.9rem; }
+.tab-label {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); padding: 0.4rem 0.7rem; border-radius: 0;
+}
+.tab-label:hover { color: var(--text); }
+.tab-label[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.note-tabs .tab-panel { border-top: none; padding-top: 0; margin-top: 0; }
+.note-tools { display: flex; gap: 0.9rem; align-items: center; }
+.test-note { border-top: none; margin-top: 1rem; }

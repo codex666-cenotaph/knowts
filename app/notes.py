@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from . import llm as llm_mod
+from .i18n import LLM_LANGUAGE_NAMES
 from .llm import LLMClient
 from .prompts import TRANSCRIPT_PLACEHOLDER, PromptVersion
 
@@ -31,6 +32,25 @@ def _render(template: str, transcript: str) -> str:
     return template.replace(TRANSCRIPT_PLACEHOLDER, transcript)
 
 
+def system_with_language_override(system: str | None, language_override: str | None) -> str | None:
+    """Append a "respond only in <language>" instruction when the meeting
+    owner has a non-English profile language set. Overrides the starter
+    prompts' default "same language as the transcript" behavior, since the
+    user explicitly asked for their chosen language regardless of the source.
+
+    Public so the prompt manager's test-run preview (app/routers/prompts.py)
+    can apply the same override the real pipeline would use.
+    """
+    name = LLM_LANGUAGE_NAMES.get(language_override or "")
+    if not name:
+        return system
+    instruction = (
+        f"IMPORTANT: Write your entire response only in {name}, regardless of "
+        "the language of the transcript or any other instruction above."
+    )
+    return f"{system}\n\n{instruction}" if system else instruction
+
+
 def generate(
     client: LLMClient,
     version: PromptVersion,
@@ -39,14 +59,21 @@ def generate(
     *,
     default_model: str,
     context_tokens: int,
+    language_override: str | None = None,
 ) -> tuple[str, str]:
-    """Run a prompt against a transcript. Returns ``(markdown, model_used)``."""
+    """Run a prompt against a transcript. Returns ``(markdown, model_used)``.
+
+    ``language_override`` (an ISO code like ``"nl"``) forces the response
+    language regardless of the transcript's language — set from the meeting
+    owner's profile preference (PLAN.md follow-up: language setting).
+    """
     model = version.model or default_model
+    system = system_with_language_override(version.system, language_override)
 
     def call(user_prompt: str) -> str:
         return client.complete(
             model=model,
-            system=version.system,
+            system=system,
             user=user_prompt,
             temperature=version.temperature,
             max_tokens=version.max_tokens,
