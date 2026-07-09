@@ -346,6 +346,58 @@ def test_diarization_off_leaves_segments_unlabelled(env):
     assert all("speaker" not in s for s in transcript.segments)
 
 
+def test_retry_requeues_failed_notes_job_and_reruns(env, monkeypatch):
+    settings, conn = env
+    from app.llm import LLMError
+
+    boom = {"fail": True}
+
+    class _FlakyLLM:
+        def __init__(self, *a, **k):
+            pass
+
+        def complete(self, *, model, system, user, temperature=None, max_tokens=None):
+            if boom["fail"]:
+                raise LLMError("LLM cold-start timeout")
+            return "# Notes\n\nrecovered"
+
+    monkeypatch.setattr(pipeline, "LLMClient", _FlakyLLM)
+
+    user = _make_user(conn)
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3"
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    summary = next(p for p in prompts.list_active(conn) if p.name == "summary")
+    jobs.create_transcribe_job(conn, meeting.id)
+    jobs.create_notes_job(conn, meeting.id, summary.id)
+
+    # First pass: transcript succeeds, notes generation fails.
+    pipeline.process_meeting(conn, settings, meeting.id)
+    notes_job = [j for j in jobs.list_for_meeting(conn, meeting.id) if j.kind == "notes"][0]
+    assert notes_job.status == jobs.STATUS_ERROR
+    assert meetings.get_transcript(conn, meeting.id) is not None  # transcript kept
+    assert meetings.list_notes(conn, meeting.id) == []
+
+    # Retry requeues only the failed job (transcribe stays done).
+    assert jobs.has_failed_jobs(conn, meeting.id) is True
+    assert jobs.retry_failed_jobs(conn, meeting.id) == 1
+    requeued = [j for j in jobs.list_for_meeting(conn, meeting.id) if j.kind == "notes"][0]
+    assert requeued.status == jobs.STATUS_QUEUED
+    # The prompt parameter survived the requeue (step still carries prompt:<id>).
+    assert requeued.prompt_id == summary.id
+    tjob = [j for j in jobs.list_for_meeting(conn, meeting.id) if j.kind == "transcribe"][0]
+    assert tjob.status == jobs.STATUS_DONE  # not re-run
+
+    # Second pass with a healthy LLM: the note generates, no re-transcription.
+    boom["fail"] = False
+    pipeline.process_meeting(conn, settings, meeting.id)
+    assert meetings.get(conn, meeting.id).status == meetings.STATUS_DONE
+    notes_list = meetings.list_notes(conn, meeting.id)
+    assert [n.prompt_name for n in notes_list] == ["summary"]
+    assert "recovered" in notes_list[0].markdown
+
+
 def test_generate_more_notes_reuses_transcript(env):
     settings, conn = env
     user = _make_user(conn)

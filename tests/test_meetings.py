@@ -275,6 +275,88 @@ def test_transcript_exports_include_speakers(client, monkeypatch):
     assert 'class="speaker">Speaker A:' in detail
 
 
+def _fail_all_jobs(conn, meeting_id):
+    """Simulate an upstream failure: mark the meeting's jobs errored."""
+    from app import jobs as jobs_mod
+    from app import meetings as meetings_mod
+
+    for j in jobs_mod.list_for_meeting(conn, meeting_id):
+        jobs_mod.mark_error(conn, j.id, "STT service unreachable")
+    meetings_mod.set_status(conn, meeting_id, meetings_mod.STATUS_ERROR)
+
+
+def test_retry_button_shown_and_requeues_failed_jobs(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    from app import jobs as jobs_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+    meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
+    conn = client.app.state.db
+    _fail_all_jobs(conn, meeting_id)
+
+    # The failed state offers a retry control.
+    detail = client.get(loc).text
+    assert f"/meetings/{meeting_id}/retry" in detail
+
+    retry_csrf = csrf_from(client, loc)
+    r = client.post(
+        f"{loc}/retry", data={"csrf_token": retry_csrf}, follow_redirects=False
+    )
+    assert r.status_code == 303
+    assert "Retrying" in r.headers["location"]
+    # Every job is back on the queue.
+    assert all(j.status == jobs_mod.STATUS_QUEUED for j in jobs_mod.list_for_meeting(conn, meeting_id))
+    assert jobs_mod.has_failed_jobs(conn, meeting_id) is False
+
+
+def test_retry_with_nothing_failed_reports_it(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+    retry_csrf = csrf_from(client, loc)
+    r = client.post(
+        f"{loc}/retry", data={"csrf_token": retry_csrf}, follow_redirects=False
+    )
+    assert r.status_code == 303
+    assert "err=Nothing+to+retry" in r.headers["location"]
+
+
+def test_retry_requires_csrf(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+    r = client.post(f"{loc}/retry", data={"csrf_token": "bogus"}, follow_redirects=False)
+    assert r.status_code == 403
+
+
+def test_retry_ownership_isolation(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+
+    admin_csrf = csrf_from(client, "/admin/users")
+    client.post(
+        "/admin/users/create",
+        data={"username": "mallory", "password": "mallorypass1", "role": "member", "csrf_token": admin_csrf},
+        follow_redirects=False,
+    )
+    member = client.__class__(client.app)
+    member.post(
+        "/login",
+        data={"username": "mallory", "password": "mallorypass1"},
+        follow_redirects=False,
+    )
+    # A member cannot retry someone else's meeting (404, no existence leak).
+    m_csrf = csrf_from(member, "/")
+    r = member.post(f"{loc}/retry", data={"csrf_token": m_csrf}, follow_redirects=False)
+    assert r.status_code == 404
+
+
 def test_delete_meeting(client, monkeypatch):
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")

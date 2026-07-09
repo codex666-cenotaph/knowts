@@ -3,8 +3,8 @@ convert meeting mp3 files to meeting notes on your own setup.
 
 See [PLAN.md](./PLAN.md) for the full design. Phase 0 (self-hosted whisper STT
 on the `link` machine) lives in [`deploy/`](./deploy/). This repo now also
-contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
-**Phase 3** (the full web UI).
+contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core),
+**Phase 3** (the full web UI), and **Phase 4** (hardening & docs).
 
 ## What's here (Phase 1)
 
@@ -87,6 +87,29 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   several speakers; it overrides the global `DIARIZATION_NUM_SPEAKERS` for that
   meeting. `DIARIZATION_CLUSTER_THRESHOLD` (higher = fewer speakers) is the global
   knob for the auto case.
+
+## What's here (Phase 4 — hardening & docs)
+
+- **Every failure is caught and surfaced.** Each pipeline step that can fail —
+  ffmpeg conversion, an unreachable/slow STT service, an LLM cold-start timeout
+  or bad response, oversized/empty uploads, unsupported formats — is turned into
+  a job-level error message and shown on the meeting page instead of crashing the
+  worker. Uploads are guarded by `MAX_UPLOAD_MB` and an allow-list of audio
+  extensions; STT/LLM clients use generous timeouts (llama-swap model swaps take
+  a while) and the worker never dies on an exception.
+- **Retry from the UI.** When a step errors, the meeting page shows a **Retry
+  failed jobs** button (`POST /meetings/{id}/retry`) that requeues only the failed
+  steps against the same upload — a failed transcription reruns without re-uploading,
+  and a failed note reruns without re-transcribing (the stored transcript is
+  reused). A notes job's target prompt lives in its own `jobs.prompt_id` column so
+  the parameter survives a requeue even after the live progress label overwrote the
+  old `step`-encoded value.
+- **Crash recovery.** A single in-process worker drains the job queue serially, so
+  at most one transcription runs at a time — the concurrency guard the plan calls
+  for (§10 step 15), keeping transcription and note generation from contending for
+  the shared GPU behind llama-swap. On restart, any job left `running` by a crashed
+  worker is requeued and its meeting re-enqueued, so interrupted work resumes
+  instead of hanging.
 
 ### Enabling diarization
 

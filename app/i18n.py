@@ -80,6 +80,9 @@ _NL: dict[str, str] = {
     "Generate more notes": "Meer notities genereren",
     "Run": "Uitvoeren",
     "Refresh to see results ↻": "Ververs om resultaten te zien ↻",
+    "Retry failed jobs": "Mislukte taken opnieuw uitvoeren",
+    "Re-runs only the failed steps against the same upload.":
+        "Voert alleen de mislukte stappen opnieuw uit op dezelfde upload.",
     # Job / meeting status + job kind (shown as badges)
     "processing": "verwerken",
     "transcribing": "transcriberen",

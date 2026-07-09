@@ -253,6 +253,34 @@ def generate_more(
     )
 
 
+@router.post("/{meeting_id}/retry")
+def retry_failed(
+    request: Request,
+    meeting_id: int,
+    csrf_token: str = Form(...),
+    ctx: auth_mod.AuthContext = Depends(auth_mod.resolve_auth),
+):
+    """Requeue a meeting's failed jobs after a transient upstream error
+    (STT/LLM unreachable, cold-start timeout) — PLAN.md §10 step 14."""
+    user = auth_mod.require_user(ctx)
+    auth_mod.verify_csrf(request, csrf_token, ctx)
+    conn = _db(request)
+    meetings_mod.get_owned(conn, meeting_id, user)  # ownership check
+
+    requeued = jobs_mod.retry_failed_jobs(conn, meeting_id)
+    if not requeued:
+        return RedirectResponse(
+            f"/meetings/{meeting_id}?err=Nothing+to+retry.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    meetings_mod.set_status(conn, meeting_id, meetings_mod.STATUS_PROCESSING)
+    _worker(request).enqueue(meeting_id)
+    return RedirectResponse(
+        f"/meetings/{meeting_id}?msg=Retrying+{requeued}+failed+job(s).",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 # --- Audio + downloads ---------------------------------------------------
 
 

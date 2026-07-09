@@ -1,6 +1,7 @@
 {# HTMX polling fragment: meeting status + per-job progress. Stops polling once
    no job is queued/running (PLAN.md §8.4). #}
 {% set active = meeting.status in ('processing', 'transcribing', 'generating') %}
+{% set has_failed = jobs | selectattr('status', 'equalto', 'error') | list | length > 0 %}
 <div id="meeting-status"
      {% if active %}hx-get="/meetings/{{ meeting.id }}/status"
      hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
@@ -16,6 +17,13 @@
     </li>
     {% endfor %}
   </ul>
+  {% if not active and has_failed %}
+  <form method="post" action="/meetings/{{ meeting.id }}/retry" class="inline retry-failed">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn">{{ t('Retry failed jobs') }}</button>
+    <small class="muted">{{ t('Re-runs only the failed steps against the same upload.') }}</small>
+  </form>
+  {% endif %}
   {% if not active %}
   <p class="muted"><a href="/meetings/{{ meeting.id }}">{{ t('Refresh to see results ↻') }}</a></p>
   {% endif %}

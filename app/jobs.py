@@ -58,23 +58,15 @@ def create_transcribe_job(conn: sqlite3.Connection, meeting_id: int) -> int:
 
 
 def create_notes_job(conn: sqlite3.Connection, meeting_id: int, prompt_id: int) -> int:
-    """A notes job records its target prompt id in ``step`` as ``prompt:<id>``
-    (the schema has no dedicated column; step doubles as the parameter here)."""
+    """A notes job records its target prompt in the ``prompt_id`` column, kept
+    separate from ``step`` (which is a live progress label and gets overwritten
+    while the job runs)."""
     cur = conn.execute(
-        "INSERT INTO jobs (meeting_id, kind, status, step) VALUES (?, ?, ?, ?)",
-        (meeting_id, KIND_NOTES, STATUS_QUEUED, f"prompt:{prompt_id}"),
+        "INSERT INTO jobs (meeting_id, kind, status, prompt_id) VALUES (?, ?, ?, ?)",
+        (meeting_id, KIND_NOTES, STATUS_QUEUED, prompt_id),
     )
     conn.commit()
     return cur.lastrowid
-
-
-def _prompt_id_from_step(step: str | None) -> int | None:
-    if step and step.startswith("prompt:"):
-        try:
-            return int(step.split(":", 1)[1])
-        except ValueError:
-            return None
-    return None
 
 
 def _row_to_job(row: sqlite3.Row) -> Job:
@@ -87,14 +79,18 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         error=row["error"],
         started_at=row["started_at"],
         finished_at=row["finished_at"],
-        prompt_id=_prompt_id_from_step(row["step"]) if row["kind"] == KIND_NOTES else None,
+        prompt_id=row["prompt_id"],
     )
+
+
+_JOB_COLUMNS = (
+    "id, meeting_id, kind, status, step, error, started_at, finished_at, prompt_id"
+)
 
 
 def list_for_meeting(conn: sqlite3.Connection, meeting_id: int) -> list[Job]:
     rows = conn.execute(
-        "SELECT id, meeting_id, kind, status, step, error, started_at, finished_at "
-        "FROM jobs WHERE meeting_id = ? ORDER BY id",
+        f"SELECT {_JOB_COLUMNS} FROM jobs WHERE meeting_id = ? ORDER BY id",
         (meeting_id,),
     ).fetchall()
     return [_row_to_job(r) for r in rows]
@@ -102,8 +98,8 @@ def list_for_meeting(conn: sqlite3.Connection, meeting_id: int) -> list[Job]:
 
 def queued_for_meeting(conn: sqlite3.Connection, meeting_id: int, kind: str) -> list[Job]:
     rows = conn.execute(
-        "SELECT id, meeting_id, kind, status, step, error, started_at, finished_at "
-        "FROM jobs WHERE meeting_id = ? AND kind = ? AND status = ? ORDER BY id",
+        f"SELECT {_JOB_COLUMNS} FROM jobs "
+        "WHERE meeting_id = ? AND kind = ? AND status = ? ORDER BY id",
         (meeting_id, kind, STATUS_QUEUED),
     ).fetchall()
     return [_row_to_job(r) for r in rows]
@@ -139,6 +135,32 @@ def mark_error(conn: sqlite3.Connection, job_id: int, message: str) -> None:
         (STATUS_ERROR, message[:2000], job_id),
     )
     conn.commit()
+
+
+def has_failed_jobs(conn: sqlite3.Connection, meeting_id: int) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM jobs WHERE meeting_id = ? AND status = ? LIMIT 1",
+        (meeting_id, STATUS_ERROR),
+    ).fetchone()
+    return row is not None
+
+
+def retry_failed_jobs(conn: sqlite3.Connection, meeting_id: int) -> int:
+    """Reset a meeting's errored jobs back to ``queued`` so the worker reruns
+    them (PLAN.md §10 step 14 — errors surfaced in the UI with retry).
+
+    Clears each job's error, progress step, and run timestamps. A notes job's
+    prompt target lives in its own ``prompt_id`` column, so it survives untouched.
+    Returns the number of jobs requeued.
+    """
+    cur = conn.execute(
+        "UPDATE jobs SET status = ?, error = NULL, step = NULL, "
+        "started_at = NULL, finished_at = NULL "
+        "WHERE meeting_id = ? AND status = ?",
+        (STATUS_QUEUED, meeting_id, STATUS_ERROR),
+    )
+    conn.commit()
+    return cur.rowcount
 
 
 def requeue_interrupted(conn: sqlite3.Connection) -> int:

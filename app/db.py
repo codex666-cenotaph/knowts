@@ -132,6 +132,20 @@ MIGRATIONS: list[tuple[int, str]] = [
         ALTER TABLE meetings ADD COLUMN diarization_num_speakers INTEGER NOT NULL DEFAULT 0;
         """,
     ),
+    (
+        6,
+        # A notes job's target prompt used to be encoded in `step`
+        # (`prompt:<id>`), but `step` doubles as the live progress label and gets
+        # overwritten once the job runs — losing the parameter and breaking retry
+        # of a failed notes job. Give it a dedicated column and backfill any job
+        # still carrying the parameter in `step`.
+        """
+        ALTER TABLE jobs ADD COLUMN prompt_id INTEGER REFERENCES prompts(id);
+        UPDATE jobs SET prompt_id = CAST(substr(step, 8) AS INTEGER)
+            WHERE kind = 'notes' AND step LIKE 'prompt:%'
+              AND CAST(substr(step, 8) AS INTEGER) IN (SELECT id FROM prompts);
+        """,
+    ),
 ]
 
 
