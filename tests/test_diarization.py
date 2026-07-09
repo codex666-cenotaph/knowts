@@ -9,7 +9,8 @@ unchanged when they're absent.
 from __future__ import annotations
 
 from app import db as db_mod
-from app import llm, meetings
+from app import diarize, llm, meetings
+from app.diarize import SpeakerTurn
 from app.routers.meetings import _to_srt
 
 
@@ -95,6 +96,68 @@ def test_chunk_segments_plain_without_speaker():
 
 
 # --- storage round-trips the speaker key ---------------------------------
+
+
+# --- merge_speakers_into_segments (pure, no deps/models) -----------------
+
+
+def test_speaker_label_maps_indices():
+    assert diarize.speaker_label(0) == "Speaker A"
+    assert diarize.speaker_label(1) == "Speaker B"
+    assert diarize.speaker_label(25) == "Speaker Z"
+    assert diarize.speaker_label(26) == "Speaker 27"
+
+
+def test_merge_assigns_max_overlap_speaker():
+    segments = [_seg("one", start=0.0, end=2.0), _seg("two", start=2.0, end=4.0)]
+    turns = [
+        SpeakerTurn(0.0, 2.1, "Speaker A"),
+        SpeakerTurn(2.1, 4.0, "Speaker B"),
+    ]
+    out = diarize.merge_speakers_into_segments(segments, turns)
+    assert out[0]["speaker"] == "Speaker A"
+    assert out[1]["speaker"] == "Speaker B"
+    # Input is not mutated.
+    assert "speaker" not in segments[0]
+
+
+def test_merge_leaves_unlabelled_when_no_overlap():
+    segments = [_seg("orphan", start=10.0, end=11.0)]
+    turns = [SpeakerTurn(0.0, 2.0, "Speaker A")]
+    out = diarize.merge_speakers_into_segments(segments, turns)
+    assert "speaker" not in out[0]
+
+
+def test_merge_noop_without_turns():
+    segments = [_seg("x", start=0.0, end=1.0)]
+    assert diarize.merge_speakers_into_segments(segments, []) == segments
+    assert diarize.merge_speakers_into_segments(None, []) is None
+
+
+# --- apply_diarization best-effort behavior ------------------------------
+
+
+def test_apply_diarization_disabled_is_noop():
+    from app.config import Settings
+
+    settings = Settings(SECRET_KEY="x" * 40)  # DIARIZATION_ENABLED defaults False
+    segs = [_seg("hi", start=0.0, end=1.0)]
+    assert diarize.apply_diarization(settings, "/nonexistent.wav", segs) is segs
+
+
+def test_apply_diarization_swallows_errors(monkeypatch):
+    from app.config import Settings
+
+    settings = Settings(
+        SECRET_KEY="x" * 40,
+        DIARIZATION_ENABLED=True,
+        DIARIZATION_SEGMENTATION_MODEL="/nope/seg.onnx",
+        DIARIZATION_EMBEDDING_MODEL="/nope/emb.onnx",
+    )
+    segs = [_seg("hi", start=0.0, end=1.0)]
+    # Missing model files -> build_diarizer raises -> apply returns segs unchanged.
+    out = diarize.apply_diarization(settings, "/nonexistent.wav", segs)
+    assert out == segs and "speaker" not in out[0]
 
 
 def test_segments_roundtrip_speaker_key(tmp_path):

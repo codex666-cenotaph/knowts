@@ -1,0 +1,11 @@
+# Optional dependencies for in-container speaker diarization.
+#
+# NOT needed for normal operation — install only when you set
+# DIARIZATION_ENABLED=true (see README "Speaker diarization"). Runs on CPU via
+# ONNX (no GPU, no HuggingFace token). Then download the two non-gated ONNX
+# models and point DIARIZATION_SEGMENTATION_MODEL / DIARIZATION_EMBEDDING_MODEL
+# at them.
+#
+#   pip install -r requirements-diarization.txt
+sherpa-onnx==1.13.4
+numpy>=1.26

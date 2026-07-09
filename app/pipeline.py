@@ -17,7 +17,7 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from . import audio, jobs, meetings, notes, prompts
+from . import audio, diarize, jobs, meetings, notes, prompts
 from .audio import AudioError
 from .config import Settings
 from .llm import LLMClient, LLMError
@@ -114,6 +114,12 @@ def _run_transcribe(
         result = transcriber.transcribe(
             wav, model=settings.stt_model, language=language
         )
+        # Optional speaker diarization on the same WAV, before it's deleted.
+        # Best-effort: returns segments unchanged if disabled or it fails.
+        segments = result.segments
+        if settings.diarization_enabled and segments:
+            jobs.set_step(conn, job_id, "diarizing")
+            segments = diarize.apply_diarization(settings, wav, segments)
     except TranscriptionError as exc:
         jobs.mark_error(conn, job_id, str(exc))
         log.error("transcription failed for meeting %d: %s", meeting_id, exc)
@@ -125,7 +131,7 @@ def _run_transcribe(
         conn,
         meeting_id,
         text=result.text,
-        segments=result.segments,
+        segments=segments,
         language=result.language,
     )
     jobs.mark_done(conn, job_id)

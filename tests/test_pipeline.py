@@ -267,6 +267,53 @@ def test_notes_receive_speaker_attributed_transcript(env, monkeypatch):
     assert "Speaker B: good thanks" in captured_users[0]
 
 
+def test_diarization_labels_segments_when_enabled(env, monkeypatch):
+    settings, conn = env
+    from app import diarize
+    from app.diarize import SpeakerTurn
+
+    # Enable diarization and inject a fake diarizer (no sherpa-onnx / models).
+    settings.diarization_enabled = True
+
+    class _FakeDiarizer:
+        def diarize(self, wav_path):
+            return [
+                SpeakerTurn(0.0, 1.5, "Speaker A"),
+                SpeakerTurn(1.5, 3.0, "Speaker B"),
+            ]
+
+    monkeypatch.setattr(diarize, "build_diarizer", lambda s: _FakeDiarizer())
+
+    user = _make_user(conn)
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3"
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    jobs.create_transcribe_job(conn, meeting.id)
+    pipeline.process_meeting(conn, settings, meeting.id)
+
+    # The two whisper segments (0-1.5s, 1.5-3s from _FakeTranscriber) are now
+    # labelled by max overlap with the fake turns.
+    transcript = meetings.get_transcript(conn, meeting.id)
+    speakers = [s.get("speaker") for s in transcript.segments]
+    assert speakers == ["Speaker A", "Speaker B"]
+
+
+def test_diarization_off_leaves_segments_unlabelled(env):
+    settings, conn = env
+    # settings.diarization_enabled defaults False.
+    user = _make_user(conn)
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.mp3"
+    )
+    (settings.audio_dir / "1.mp3").write_bytes(b"fake-mp3")
+    jobs.create_transcribe_job(conn, meeting.id)
+    pipeline.process_meeting(conn, settings, meeting.id)
+
+    transcript = meetings.get_transcript(conn, meeting.id)
+    assert all("speaker" not in s for s in transcript.segments)
+
+
 def test_generate_more_notes_reuses_transcript(env):
     settings, conn = env
     user = _make_user(conn)

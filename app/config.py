@@ -67,6 +67,36 @@ class Settings(BaseSettings):
     #   "<code>"     -> always pin this language for every transcription
     stt_language: str | None = Field(default=None, alias="STT_LANGUAGE")
 
+    # --- Speaker diarization (optional, off by default) -------------------
+    # In-container CPU diarization via sherpa-onnx (no GPU, no HF token). When
+    # enabled, the pipeline labels each transcript segment with a speaker.
+    # Requires the extra deps (requirements-diarization.txt) and the two
+    # non-gated ONNX models (paths below). See README for setup.
+    diarization_enabled: bool = Field(default=False, alias="DIARIZATION_ENABLED")
+    diarization_segmentation_model: str | None = Field(
+        default=None, alias="DIARIZATION_SEGMENTATION_MODEL"
+    )
+    diarization_embedding_model: str | None = Field(
+        default=None, alias="DIARIZATION_EMBEDDING_MODEL"
+    )
+    # Number of speakers if known ahead of time; <= 0 clusters automatically
+    # using the threshold below.
+    diarization_num_speakers: int = Field(default=0, alias="DIARIZATION_NUM_SPEAKERS")
+    diarization_cluster_threshold: float = Field(
+        default=0.5, alias="DIARIZATION_CLUSTER_THRESHOLD"
+    )
+    diarization_num_threads: int = Field(default=1, alias="DIARIZATION_NUM_THREADS")
+
+    @property
+    def diarization_configured(self) -> bool:
+        """True only when diarization is enabled *and* both model paths are set
+        (existence is checked at load time in app/diarize.py)."""
+        return bool(
+            self.diarization_enabled
+            and self.diarization_segmentation_model
+            and self.diarization_embedding_model
+        )
+
     @field_validator("data_dir", mode="before")
     @classmethod
     def _expand(cls, value: object) -> object:

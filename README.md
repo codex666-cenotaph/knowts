@@ -72,14 +72,41 @@ contains **Phase 1** (skeleton + auth), **Phase 2** (the pipeline core), and
   A deployment can still force one STT language for everyone with `STT_LANGUAGE`
   (`auto` = always autodetect, or a fixed ISO-639-1 code), which overrides the
   per-meeting choice.
-- **Speaker diarization (ready, not yet produced)**: the whisper backend we run
-  (`whisper-server`) can't do real "Speaker A/B" diarization — that needs a
-  separate pyannote/WhisperX service (ROCm on AMD, a HuggingFace token; a future
-  `Transcriber` adapter). knowts is *ready* for it: if a backend attaches a
-  `speaker` key to transcript segments, the transcript panel, `.txt`/`.srt`
-  exports, and the notes prompts all surface and attribute per speaker
-  automatically. With today's backend (no `speaker` key) everything renders
-  exactly as before. See `speaker_attributed_text` in `app/meetings.py`.
+- **Speaker diarization (optional, CPU, off by default)**: `whisper-server` can't
+  label speakers itself, so knowts can run diarization in-container via
+  **sherpa-onnx** — the full VAD + segmentation + embedding + clustering pipeline as
+  **ONNX on CPU** (no GPU, no ROCm, no HuggingFace token; non-gated models).
+  When `DIARIZATION_ENABLED=true`, each transcript segment gets a `speaker`, which
+  the transcript panel, `.txt`/`.srt` exports, and the notes prompts all surface and
+  attribute automatically. When off (default), transcripts render exactly as before.
+  Diarization is best-effort — if the deps/models are missing or a run fails, the
+  transcript is saved unlabelled and transcription is never blocked. See
+  `app/diarize.py` and the setup below.
+
+### Enabling diarization
+
+```sh
+# 1. Extra deps (CPU-only; not in the base image):
+pip install -r requirements-diarization.txt
+
+# 2. Download the two non-gated ONNX models (no HF token needed) — e.g.:
+mkdir -p ./data/models/diarization
+#   segmentation (MIT pyannote-3.0 exported to ONNX, ~6.6 MB) and an embedding
+#   model, from the k2-fsa sherpa-onnx model releases:
+#   https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models
+#   https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+# Place them and point the env vars at the files.
+
+# 3. Enable it:
+export DIARIZATION_ENABLED=true
+export DIARIZATION_SEGMENTATION_MODEL=./data/models/diarization/segmentation.onnx
+export DIARIZATION_EMBEDDING_MODEL=./data/models/diarization/embedding.onnx
+# Optional: DIARIZATION_NUM_SPEAKERS (0=auto), DIARIZATION_CLUSTER_THRESHOLD, DIARIZATION_NUM_THREADS
+```
+
+Diarization runs on the same 16 kHz mono WAV whisper uses, on CPU, so the GPU stays
+dedicated to whisper. (In the Docker image, `pip install -r requirements-diarization.txt`
+in the Dockerfile and mount/copy the models into the data volume.)
 
 ## Run locally
 
