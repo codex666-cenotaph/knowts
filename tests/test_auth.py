@@ -36,9 +36,10 @@ def test_login_and_access_home(client):
     assert r.status_code == 303
     assert r.headers["location"] == "/"
 
+    # The app lands on the meetings dashboard; the topbar greets the logged-in
+    # user and the dashboard offers a "New meeting" call to action.
     home = client.get("/")
     assert home.status_code == 200
-    # Home is the upload page from Phase 2; the topbar greets the logged-in user.
     assert "New meeting" in home.text
     assert "admin" in home.text
 

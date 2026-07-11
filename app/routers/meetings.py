@@ -36,11 +36,7 @@ _MAX_SPEAKERS = 20
 # Meeting is still doing work (worker running or queued). While active, the
 # detail page polls the status fragment; once it leaves this set the pipeline
 # is finished (done or errored) and there is nothing left to poll.
-_ACTIVE_STATUSES = {
-    meetings_mod.STATUS_PROCESSING,
-    meetings_mod.STATUS_TRANSCRIBING,
-    meetings_mod.STATUS_GENERATING,
-}
+_ACTIVE_STATUSES = frozenset(meetings_mod.ACTIVE_STATUSES)
 
 
 def _db(request: Request) -> sqlite3.Connection:
@@ -81,6 +77,7 @@ def archive(
         request,
         "meetings_list.html",
         items=items,
+        stats=meetings_mod.stats_for_user(conn, user),
         q=q,
         date_from=date_from,
         date_to=date_to,

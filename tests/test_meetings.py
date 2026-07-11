@@ -42,6 +42,25 @@ def test_meetings_requires_login(client):
     assert client.get("/meetings", follow_redirects=False).status_code == 303
 
 
+def test_root_redirects_to_meetings_dashboard(client):
+    login(client, "admin", "adminpass123")
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/meetings"
+
+
+def test_meetings_dashboard_shows_stats(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/meetings")
+    _upload(client, csrf, title="Team sync")
+    html = client.get("/meetings").text
+    # Dashboard stat tiles and their labels are present.
+    assert "stats" in html
+    for label in ("In progress", "Completed", "Notes generated", "Recorded time"):
+        assert label in html
+
+
 def test_upload_creates_meeting_and_jobs(client, monkeypatch):
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")
@@ -62,7 +81,7 @@ def test_upload_form_has_language_select_defaulting_to_user_language(client, mon
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")
     # Admin defaults to English.
-    html = client.get("/").text
+    html = client.get("/upload").text
     assert 'name="language"' in html
     assert '<option value="en" selected>' in html
     assert 'value="auto"' in html
@@ -125,7 +144,7 @@ def test_upload_form_hides_speakers_field_when_diarization_off(client, monkeypat
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")
     # Diarization defaults off in the test env -> no speakers field.
-    assert 'name="num_speakers"' not in client.get("/").text
+    assert 'name="num_speakers"' not in client.get("/upload").text
 
 
 def test_upload_form_shows_speakers_field_when_diarization_on(client, monkeypatch):
@@ -138,7 +157,7 @@ def test_upload_form_shows_speakers_field_when_diarization_on(client, monkeypatc
         home_router, "get_settings",
         lambda: Settings(SECRET_KEY="x" * 40, DIARIZATION_ENABLED=True),
     )
-    assert 'name="num_speakers"' in client.get("/").text
+    assert 'name="num_speakers"' in client.get("/upload").text
 
 
 def test_upload_rejects_bad_extension(client, monkeypatch):

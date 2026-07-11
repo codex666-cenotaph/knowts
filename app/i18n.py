@@ -25,6 +25,7 @@ _NL: dict[str, str] = {
     "Meetings": "Vergaderingen",
     "Prompts": "Prompts",
     "Users": "Gebruikers",
+    "Admin": "Beheer",
     "Profile": "Profiel",
     "Menu": "Menu",
     "Sign out": "Uitloggen",
@@ -50,7 +51,13 @@ _NL: dict[str, str] = {
     "Recent meetings": "Recente vergaderingen",
     "All meetings →": "Alle vergaderingen →",
     "official": "officieel",
-    # Meetings archive
+    # Meetings archive / dashboard
+    "Overview": "Overzicht",
+    "In progress": "Bezig",
+    "Completed": "Voltooid",
+    "Failed": "Mislukt",
+    "Notes generated": "Notities gegenereerd",
+    "Recorded time": "Opgenomen tijd",
     "Search by title": "Zoeken op titel",
     "From": "Van",
     "To": "Tot",

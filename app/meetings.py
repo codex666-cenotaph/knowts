@@ -25,6 +25,11 @@ STATUS_GENERATING = "generating"
 STATUS_DONE = "done"
 STATUS_ERROR = "error"
 
+# Meeting is still doing work (worker running or queued). While a meeting is in
+# one of these states the detail page polls for progress; leaving the set means
+# the pipeline finished (done or errored).
+ACTIVE_STATUSES = (STATUS_PROCESSING, STATUS_TRANSCRIBING, STATUS_GENERATING)
+
 
 @dataclass(frozen=True)
 class Meeting:
@@ -188,6 +193,39 @@ def search_for_user(
     sql += " ORDER BY created_at DESC"
     rows = conn.execute(sql, params).fetchall()
     return [_row_to_meeting(r) for r in rows]
+
+
+def stats_for_user(conn: sqlite3.Connection, user: User) -> dict[str, int | float]:
+    """Aggregate dashboard counters, ownership-scoped like ``list_for_user``
+    (members see only their own; admins see everyone's)."""
+    scope = "" if user.is_admin else " WHERE user_id = ?"
+    params: tuple = () if user.is_admin else (user.id,)
+    active = ", ".join(f"'{s}'" for s in ACTIVE_STATUSES)
+    row = conn.execute(
+        "SELECT COUNT(*) AS total, "
+        f"SUM(CASE WHEN status IN ({active}) THEN 1 ELSE 0 END) AS in_progress, "
+        f"SUM(CASE WHEN status = '{STATUS_DONE}' THEN 1 ELSE 0 END) AS done, "
+        f"SUM(CASE WHEN status = '{STATUS_ERROR}' THEN 1 ELSE 0 END) AS failed, "
+        "COALESCE(SUM(duration_s), 0) AS duration_s "
+        f"FROM meetings{scope}",
+        params,
+    ).fetchone()
+    if user.is_admin:
+        notes = conn.execute("SELECT COUNT(*) AS c FROM notes").fetchone()["c"]
+    else:
+        notes = conn.execute(
+            "SELECT COUNT(*) AS c FROM notes n "
+            "JOIN meetings m ON m.id = n.meeting_id WHERE m.user_id = ?",
+            (user.id,),
+        ).fetchone()["c"]
+    return {
+        "total": row["total"] or 0,
+        "in_progress": row["in_progress"] or 0,
+        "done": row["done"] or 0,
+        "failed": row["failed"] or 0,
+        "duration_s": row["duration_s"] or 0,
+        "notes": notes or 0,
+    }
 
 
 def set_status(conn: sqlite3.Connection, meeting_id: int, status_value: str) -> None:

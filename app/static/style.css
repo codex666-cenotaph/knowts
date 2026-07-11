@@ -41,7 +41,26 @@ a:hover { text-decoration: underline; }
 .topbar nav a { color: var(--muted); }
 .topbar nav a:hover { color: var(--text); text-decoration: none; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
-.whoami { color: var(--muted); font-size: 0.9rem; }
+a.whoami { color: var(--muted); font-size: 0.9rem; }
+a.whoami:hover { color: var(--text); text-decoration: none; }
+
+/* Admin dropdown (native <details>; expands inline on mobile) */
+.nav-dropdown { position: relative; }
+.nav-dropdown > summary {
+  list-style: none; cursor: pointer; color: var(--muted);
+  padding: 0; user-select: none;
+}
+.nav-dropdown > summary::-webkit-details-marker { display: none; }
+.nav-dropdown > summary::after { content: " ▾"; font-size: 0.8em; }
+.nav-dropdown > summary:hover { color: var(--text); }
+.nav-menu {
+  position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 0.5rem;
+  display: flex; flex-direction: column; gap: 0.15rem; min-width: 150px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.35rem;
+}
+.nav-menu a { color: var(--muted); padding: 0.4rem 0.55rem; border-radius: 6px; }
+.nav-menu a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
 
 /* Hamburger toggle — visible only on narrow screens (see media query below).
    The checkbox is visually hidden but stays keyboard-focusable; each page
@@ -69,6 +88,11 @@ a:hover { text-decoration: underline; }
   .topbar-right {
     margin-left: 0; justify-content: space-between;
     border-top: 1px solid var(--border); padding-top: 0.6rem;
+  }
+  /* Inline (non-floating) dropdown on mobile so it sits within the stacked menu. */
+  .nav-menu {
+    position: static; margin: 0.15rem 0 0.3rem 0.9rem;
+    border: none; background: none; padding: 0;
   }
 }
 
@@ -157,6 +181,23 @@ button.linkbtn:hover { text-decoration: underline; }
 
 .row-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 .row-form input { flex: 1 1 160px; }
+
+/* Dashboard stat tiles */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem; margin: 1.25rem 0 1.5rem;
+}
+.stat {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.85rem 1rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.stat-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 0.78rem; color: var(--muted); }
+.stat-accent { border-color: rgba(91, 140, 255, 0.4); }
+.stat-accent .stat-value { color: var(--accent); }
+.stat-danger { border-color: rgba(255, 107, 107, 0.4); }
+.stat-danger .stat-value { color: var(--danger); }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem; }

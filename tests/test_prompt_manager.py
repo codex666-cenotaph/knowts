@@ -182,7 +182,7 @@ def test_archive_hides_from_picker_but_keeps_in_manager(client):
     assert r.status_code == 303
     # Gone from the default (active) manager list and the upload picker...
     assert "temp prompt" not in client.get("/prompts").text
-    assert "temp prompt" not in client.get("/").text
+    assert "temp prompt" not in client.get("/upload").text
     # ...but visible with ?show=all.
     assert "temp prompt" in client.get("/prompts?show=all").text
 
