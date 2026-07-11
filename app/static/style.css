@@ -211,8 +211,27 @@ table.grid tr.inactive { opacity: 0.5; }
 .reset-form input { width: 140px; padding: 0.35rem 0.5rem; }
 
 /* --- Phase 2: meetings pipeline --- */
-.btn { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn:hover { background: var(--accent-hover); }
+/* .btn is a complete button style so it looks identical on a <button> and on an
+   <a> — links don't inherit the base `button {}` box (padding/radius/border), so
+   spell it out here or anchor "buttons" render as flat unpadded rectangles. */
+.btn {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+}
+.btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+  text-decoration: none;
+}
 .linkbtn.danger { color: var(--danger); }
 
 .upload-form { display: flex; flex-direction: column; gap: 1rem; margin: 1.25rem 0; }
