@@ -62,6 +62,17 @@ a.whoami:hover { color: var(--text); text-decoration: none; }
 .nav-menu a { color: var(--muted); padding: 0.4rem 0.55rem; border-radius: 6px; }
 .nav-menu a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
 
+/* Gear settings menu next to the username (opens toward the right edge) */
+.settings-menu > summary.gear {
+  font-size: 1.05rem; line-height: 1; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.32rem 0.45rem; background: var(--panel-2);
+}
+.settings-menu > summary.gear::after { content: none; }
+.settings-menu > summary.gear:hover { color: var(--text); }
+.settings-menu[open] > summary.gear { color: var(--text); border-color: var(--accent); }
+.settings-menu .nav-menu { left: auto; right: 0; }
+
 /* Hamburger toggle — visible only on narrow screens (see media query below).
    The checkbox is visually hidden but stays keyboard-focusable; each page
    load resets it, so the menu opens closed on mobile. */

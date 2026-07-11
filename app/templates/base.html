@@ -22,17 +22,17 @@
         <a href="/upload">{{ t('Upload') }}</a>
         <a href="/meetings">{{ t('Meetings') }}</a>
         <a href="/prompts">{{ t('Prompts') }}</a>
+      </nav>
+      <div class="topbar-right">
+        <a class="whoami" href="/profile" title="{{ t('Profile') }}">{{ user.username }}{% if user.is_admin %} <span class="badge">{{ t('admin') }}</span>{% endif %}</a>
         {% if user.is_admin %}
-        <details class="nav-dropdown">
-          <summary>{{ t('Admin') }}</summary>
+        <details class="nav-dropdown settings-menu">
+          <summary class="gear" aria-label="{{ t('Settings') }}" title="{{ t('Settings') }}">⚙</summary>
           <div class="nav-menu">
             <a href="/admin/users">{{ t('Users') }}</a>
           </div>
         </details>
         {% endif %}
-      </nav>
-      <div class="topbar-right">
-        <a class="whoami" href="/profile" title="{{ t('Profile') }}">{{ user.username }}{% if user.is_admin %} <span class="badge">{{ t('admin') }}</span>{% endif %}</a>
         <form method="post" action="/logout" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="linkbtn">{{ t('Sign out') }}</button>
