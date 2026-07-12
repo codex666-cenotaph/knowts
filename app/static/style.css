@@ -266,9 +266,15 @@ table.grid tr.inactive { opacity: 0.5; }
 }
 .linkbtn.danger { color: var(--danger); }
 
-.upload-form { display: flex; flex-direction: column; gap: 1rem; margin: 1.25rem 0; }
-.upload-form > label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: var(--muted); }
-.upload-form input[type="text"], .upload-form input[type="date"] { max-width: 360px; }
+.upload-form { display: flex; flex-direction: column; gap: 0.9rem; margin: 1.25rem 0; }
+.upload-form > label, .field-grid > label {
+  display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: var(--muted); margin: 0;
+}
+.upload-form input[type="text"] { max-width: 360px; }
+/* Short "pulldown" fields (date, language, speakers) sit side by side when there
+   is room and collapse to a single column on narrow screens. */
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9rem; align-items: start; }
+.field-grid input, .field-grid select { width: 100%; }
 
 .prompt-picker { border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem; display: grid; gap: 0.5rem; }
 .prompt-picker legend { color: var(--muted); font-size: 0.85rem; padding: 0 0.4rem; }

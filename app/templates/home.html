@@ -12,26 +12,28 @@
     <input type="text" name="title" required placeholder="Weekly sync">
   </label>
 
-  <label>{{ t('Meeting date') }}
-    <input type="date" name="meeting_date">
-  </label>
+  <div class="field-grid">
+    <label>{{ t('Meeting date') }}
+      <input type="date" name="meeting_date">
+    </label>
 
-  <label>{{ t('Language') }}
-    <select name="language">
-      {% for code, label in languages.items() %}
-      <option value="{{ code }}" {% if code == user.language %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-      <option value="auto" {% if user.language not in languages %}selected{% endif %}>{{ t('Auto-detect') }}</option>
-    </select>
-    <small class="muted">{{ t('Transcription and notes use this language. Auto-detect lets whisper guess.') }}</small>
-  </label>
+    <label>{{ t('Language') }}
+      <select name="language">
+        {% for code, label in languages.items() %}
+        <option value="{{ code }}" {% if code == user.language %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+        <option value="auto" {% if user.language not in languages %}selected{% endif %}>{{ t('Auto-detect') }}</option>
+      </select>
+      <small class="muted">{{ t('Transcription and notes use this language. Auto-detect lets whisper guess.') }}</small>
+    </label>
 
-  {% if diarization_enabled %}
-  <label>{{ t('Speakers') }}
-    <input type="number" name="num_speakers" min="0" max="20" value="0" step="1">
-    <small class="muted">{{ t('How many people speak. 0 = auto-detect. Set the exact number if auto splits one person into several.') }}</small>
-  </label>
-  {% endif %}
+    {% if diarization_enabled %}
+    <label>{{ t('Speakers') }}
+      <input type="number" name="num_speakers" min="0" max="20" value="0" step="1">
+      <small class="muted">{{ t('How many people speak. 0 = auto-detect. Set the exact number if auto splits one person into several.') }}</small>
+    </label>
+    {% endif %}
+  </div>
 
   <label>{{ t('Audio file') }}
     <input type="file" name="file" accept="audio/*,.mp3,.m4a,.wav,.mp4,.ogg,.flac"
