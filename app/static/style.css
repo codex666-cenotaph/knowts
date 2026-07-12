@@ -37,7 +37,10 @@ a:hover { text-decoration: underline; }
 }
 .brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.15rem; color: var(--text); }
 .brand:hover { text-decoration: none; }
-.brand-mark { display: block; width: 26px; height: 26px; }
+/* The wordmark is all-lowercase with no descenders, so its optical weight sits
+   below the line-box center that flex-centering aligns to; nudge the mark down a
+   hair so it reads as vertically balanced with the text. */
+.brand-mark { display: block; width: 26px; height: 26px; position: relative; top: 2px; }
 .auth-logo { display: block; width: 52px; height: 52px; margin: 0 0 0.85rem; }
 .topbar-menu { display: flex; align-items: center; gap: 1.25rem; flex: 1 1 auto; }
 .topbar nav { display: flex; gap: 1rem; flex-wrap: wrap; }
