@@ -35,7 +35,10 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.brand { font-weight: 700; font-size: 1.15rem; color: var(--text); }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.15rem; color: var(--text); }
+.brand:hover { text-decoration: none; }
+.brand-mark { display: block; width: 26px; height: 26px; }
+.auth-logo { display: block; width: 52px; height: 52px; margin: 0 0 0.85rem; }
 .topbar-menu { display: flex; align-items: center; gap: 1.25rem; flex: 1 1 auto; }
 .topbar nav { display: flex; gap: 1rem; flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); }
