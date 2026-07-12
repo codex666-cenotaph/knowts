@@ -271,10 +271,13 @@ table.grid tr.inactive { opacity: 0.5; }
   display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: var(--muted); margin: 0;
 }
 .upload-form input[type="text"] { max-width: 360px; }
-/* Short "pulldown" fields (date, language, speakers) sit side by side when there
-   is room and collapse to a single column on narrow screens. */
-.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9rem; align-items: start; }
+/* Short "pulldown" fields (date, language, speakers): a single column on narrow
+   phones, a tidy two-column grid once there is room. */
+.field-grid { display: grid; grid-template-columns: 1fr; gap: 0.9rem 1.1rem; align-items: start; }
 .field-grid input, .field-grid select { width: 100%; }
+@media (min-width: 560px) {
+  .field-grid { grid-template-columns: 1fr 1fr; }
+}
 
 .prompt-picker { border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem; display: grid; gap: 0.5rem; }
 .prompt-picker legend { color: var(--muted); font-size: 0.85rem; padding: 0 0.4rem; }
