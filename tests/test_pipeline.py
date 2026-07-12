@@ -105,6 +105,29 @@ def test_full_pipeline_transcribe_and_notes(env):
     assert not (settings.audio_dir / "1.wav").exists()
 
 
+def test_wav_upload_keeps_original_and_transcribes(env):
+    """A .wav upload must survive: the intermediate STT wav must not alias it."""
+    settings, conn = env
+    user = _make_user(conn)
+    meeting = meetings.create(
+        conn, user_id=user.id, title="Sync", meeting_date=None, filename="1.wav"
+    )
+    original = settings.audio_dir / meeting.filename
+    original.write_bytes(b"RIFFreal-wav-upload")
+
+    jobs.create_transcribe_job(conn, meeting.id)
+    pipeline.process_meeting(conn, settings, meeting.id)
+
+    # Transcription succeeded off the wav source...
+    transcript = meetings.get_transcript(conn, meeting.id)
+    assert transcript is not None and "meeting" in transcript.text
+    # ...and the user's original .wav upload is still on disk, untouched.
+    assert original.exists()
+    assert original.read_bytes() == b"RIFFreal-wav-upload"
+    # The intermediate conversion artifact was cleaned up.
+    assert not (settings.audio_dir / "1.stt.wav").exists()
+
+
 def test_transcription_failure_marks_meeting_error(env, monkeypatch):
     settings, conn = env
     from app.transcriber import TranscriptionError

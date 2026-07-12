@@ -94,7 +94,11 @@ def _run_transcribe(
     jobs.mark_running(conn, job_id, step="converting")
     meetings.set_status(conn, meeting_id, meetings.STATUS_TRANSCRIBING)
     src = _audio_path(settings, meeting.filename)
-    wav = src.with_suffix(".wav")
+    # Intermediate 16 kHz mono WAV for the STT step. Use a distinct suffix so it
+    # never collides with the original upload — a plain ".wav" would alias a
+    # ``.wav`` source, making ffmpeg read and write the same file and then the
+    # cleanup below delete the user's original audio.
+    wav = src.with_suffix(".stt.wav")
     try:
         duration = audio.probe_duration_s(src)
         if duration is not None:
