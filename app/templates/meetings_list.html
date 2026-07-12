@@ -1,7 +1,38 @@
 {% extends "base.html" %}
 {% block title %}{{ t('Meetings') }} · knowts{% endblock %}
 {% block content %}
-<h1>{{ t('Meetings') }}</h1>
+<div class="meeting-header">
+  <h1>{{ t('Meetings') }}</h1>
+  <a href="/upload" class="btn">{{ t('New meeting') }}</a>
+</div>
+
+{% set total_min = (stats.duration_s // 60)|int %}
+<div class="stats" role="group" aria-label="{{ t('Overview') }}">
+  <div class="stat">
+    <span class="stat-value">{{ stats.total }}</span>
+    <span class="stat-label">{{ t('Meetings') }}</span>
+  </div>
+  <div class="stat {{ 'stat-accent' if stats.in_progress else '' }}">
+    <span class="stat-value">{{ stats.in_progress }}</span>
+    <span class="stat-label">{{ t('In progress') }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{{ stats.done }}</span>
+    <span class="stat-label">{{ t('Completed') }}</span>
+  </div>
+  <div class="stat {{ 'stat-danger' if stats.failed else '' }}">
+    <span class="stat-value">{{ stats.failed }}</span>
+    <span class="stat-label">{{ t('Failed') }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{{ stats.notes }}</span>
+    <span class="stat-label">{{ t('Notes generated') }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">{% if total_min >= 60 %}{{ total_min // 60 }}h {{ total_min % 60 }}m{% else %}{{ total_min }}m{% endif %}</span>
+    <span class="stat-label">{{ t('Recorded time') }}</span>
+  </div>
+</div>
 
 <form method="get" action="/meetings" class="row-form filter-form">
   <input type="search" name="q" value="{{ q }}" placeholder="{{ t('Search by title') }}">
@@ -32,6 +63,6 @@
 {% elif filtered %}
 <p class="muted">{{ t('No meetings match your filter.') }} <a href="/meetings">{{ t('Clear filter') }}</a></p>
 {% else %}
-<p class="muted">{{ t('No meetings yet.') }} <a href="/">{{ t('Upload one →') }}</a></p>
+<p class="muted">{{ t('No meetings yet.') }} <a href="/upload">{{ t('Upload one →') }}</a></p>
 {% endif %}
 {% endblock %}

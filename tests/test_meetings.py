@@ -42,6 +42,25 @@ def test_meetings_requires_login(client):
     assert client.get("/meetings", follow_redirects=False).status_code == 303
 
 
+def test_root_redirects_to_meetings_dashboard(client):
+    login(client, "admin", "adminpass123")
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/meetings"
+
+
+def test_meetings_dashboard_shows_stats(client, monkeypatch):
+    _stub_pipeline(monkeypatch)
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/meetings")
+    _upload(client, csrf, title="Team sync")
+    html = client.get("/meetings").text
+    # Dashboard stat tiles and their labels are present.
+    assert "stats" in html
+    for label in ("In progress", "Completed", "Notes generated", "Recorded time"):
+        assert label in html
+
+
 def test_upload_creates_meeting_and_jobs(client, monkeypatch):
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")
@@ -62,7 +81,7 @@ def test_upload_form_has_language_select_defaulting_to_user_language(client, mon
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")
     # Admin defaults to English.
-    html = client.get("/").text
+    html = client.get("/upload").text
     assert 'name="language"' in html
     assert '<option value="en" selected>' in html
     assert 'value="auto"' in html
@@ -125,7 +144,7 @@ def test_upload_form_hides_speakers_field_when_diarization_off(client, monkeypat
     _stub_pipeline(monkeypatch)
     login(client, "admin", "adminpass123")
     # Diarization defaults off in the test env -> no speakers field.
-    assert 'name="num_speakers"' not in client.get("/").text
+    assert 'name="num_speakers"' not in client.get("/upload").text
 
 
 def test_upload_form_shows_speakers_field_when_diarization_on(client, monkeypatch):
@@ -138,7 +157,7 @@ def test_upload_form_shows_speakers_field_when_diarization_on(client, monkeypatc
         home_router, "get_settings",
         lambda: Settings(SECRET_KEY="x" * 40, DIARIZATION_ENABLED=True),
     )
-    assert 'name="num_speakers"' in client.get("/").text
+    assert 'name="num_speakers"' in client.get("/upload").text
 
 
 def test_upload_rejects_bad_extension(client, monkeypatch):
@@ -309,6 +328,34 @@ def test_retry_button_shown_and_requeues_failed_jobs(client, monkeypatch):
     # Every job is back on the queue.
     assert all(j.status == jobs_mod.STATUS_QUEUED for j in jobs_mod.list_for_meeting(conn, meeting_id))
     assert jobs_mod.has_failed_jobs(conn, meeting_id) is False
+
+
+def test_status_fragment_triggers_reload_when_finished(client, monkeypatch):
+    """When the pipeline finishes, the polled status fragment tells htmx to
+    reload the page so results appear without a manual refresh — but only once
+    work is actually done, and only for htmx (polling) requests."""
+    _stub_pipeline(monkeypatch)
+    from app import meetings as meetings_mod
+
+    login(client, "admin", "adminpass123")
+    csrf = csrf_from(client, "/")
+    loc = _upload(client, csrf).headers["location"]
+    meeting_id = int(loc.rstrip("/").rsplit("/", 1)[-1])
+    conn = client.app.state.db
+
+    # Still processing -> keep polling, no reload.
+    meetings_mod.set_status(conn, meeting_id, meetings_mod.STATUS_TRANSCRIBING)
+    active = client.get(f"{loc}/status", headers={"HX-Request": "true"})
+    assert active.headers.get("HX-Refresh") is None
+
+    # Finished -> ask htmx to reload the whole page.
+    meetings_mod.set_status(conn, meeting_id, meetings_mod.STATUS_DONE)
+    done = client.get(f"{loc}/status", headers={"HX-Request": "true"})
+    assert done.headers.get("HX-Refresh") == "true"
+
+    # A plain (non-htmx) request never gets the reload header.
+    plain = client.get(f"{loc}/status")
+    assert plain.headers.get("HX-Refresh") is None
 
 
 def test_retry_with_nothing_failed_reports_it(client, monkeypatch):

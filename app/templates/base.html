@@ -5,30 +5,47 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}knowts{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+  {# htmx is vendored locally (app/static/vendor) so the app runs self-hosted
+     and offline with no third-party CDN dependency at runtime. #}
+  <script src="/static/vendor/htmx.min.js" defer></script>
 </head>
 <body>
   {% if user %}
   <header class="topbar">
-    <a class="brand" href="/">knowts</a>
+    <a class="brand" href="/meetings">knowts</a>
     <input type="checkbox" id="nav-toggle" class="nav-toggle">
     <label for="nav-toggle" class="nav-burger" aria-label="{{ t('Menu') }}">
       <span></span><span></span><span></span>
     </label>
     <div class="topbar-menu">
       <nav>
-        <a href="/">{{ t('Upload') }}</a>
+        <a href="/upload">{{ t('Upload') }}</a>
         <a href="/meetings">{{ t('Meetings') }}</a>
-        <a href="/prompts">{{ t('Prompts') }}</a>
-        {% if user.is_admin %}<a href="/admin/users">{{ t('Users') }}</a>{% endif %}
-        <a href="/profile">{{ t('Profile') }}</a>
       </nav>
       <div class="topbar-right">
-        <span class="whoami">{{ user.username }}{% if user.is_admin %} <span class="badge">{{ t('admin') }}</span>{% endif %}</span>
-        <form method="post" action="/logout" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" class="linkbtn">{{ t('Sign out') }}</button>
-        </form>
+        <details class="nav-dropdown settings-menu">
+          <summary class="gear" aria-label="{{ t('Settings') }}" title="{{ t('Settings') }}">⚙</summary>
+          <div class="nav-menu">
+            <a href="/prompts">{{ t('Prompts') }}</a>
+            {% if user.is_admin %}<a href="/admin/users">{{ t('Users') }}</a>{% endif %}
+          </div>
+        </details>
+        <details class="nav-dropdown account-menu">
+          <summary class="account-summary">
+            <span class="avatar" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2.5c-4.4 0-8 2.2-8 5V21h16v-1.5c0-2.8-3.6-5-8-5Z" fill="currentColor"/></svg>
+            </span>
+            <span class="account-name">{{ user.username }}</span>
+            {% if user.is_admin %}<span class="badge">{{ t('admin') }}</span>{% endif %}
+          </summary>
+          <div class="nav-menu">
+            <a href="/profile">{{ t('Profile') }}</a>
+            <form method="post" action="/logout" class="logout-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="menu-btn">{{ t('Sign out') }}</button>
+            </form>
+          </div>
+        </details>
       </div>
     </div>
   </header>
@@ -41,5 +58,22 @@
   </main>
 
   <footer class="footer">{{ t('knowts v{version} · meeting MP3 → notes').replace('{version}', request.app.version) }}</footer>
+  <script>
+    // Close nav dropdowns (gear settings + account menu) when clicking outside.
+    document.addEventListener('click', function (e) {
+      document.querySelectorAll('.nav-dropdown[open]').forEach(function (d) {
+        if (!d.contains(e.target)) d.removeAttribute('open');
+      });
+    });
+    // Opening one dropdown closes any other that is open.
+    document.querySelectorAll('.nav-dropdown > summary').forEach(function (s) {
+      s.addEventListener('click', function () {
+        var self = s.parentElement;
+        document.querySelectorAll('.nav-dropdown[open]').forEach(function (d) {
+          if (d !== self) d.removeAttribute('open');
+        });
+      });
+    });
+  </script>
 </body>
 </html>

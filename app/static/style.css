@@ -40,8 +40,53 @@ a:hover { text-decoration: underline; }
 .topbar nav { display: flex; gap: 1rem; flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); }
 .topbar nav a:hover { color: var(--text); text-decoration: none; }
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
-.whoami { color: var(--muted); font-size: 0.9rem; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
+
+/* Account pulldown (avatar + username + caret) */
+.account-summary { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; }
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+}
+.account-summary:hover .avatar { color: var(--text); border-color: var(--accent); }
+.account-menu .nav-menu { left: auto; right: 0; }
+.nav-menu .logout-form { margin: 0; }
+.menu-btn {
+  width: 100%; text-align: left; font: inherit; cursor: pointer;
+  background: none; border: none; color: var(--muted);
+  padding: 0.4rem 0.55rem; border-radius: 6px;
+}
+.menu-btn:hover { color: var(--text); background: var(--panel); }
+
+/* Admin dropdown (native <details>; expands inline on mobile) */
+.nav-dropdown { position: relative; }
+.nav-dropdown > summary {
+  list-style: none; cursor: pointer; color: var(--muted);
+  padding: 0; user-select: none;
+}
+.nav-dropdown > summary::-webkit-details-marker { display: none; }
+.nav-dropdown > summary::after { content: " ▾"; font-size: 0.8em; }
+.nav-dropdown > summary:hover { color: var(--text); }
+.nav-menu {
+  position: absolute; top: 100%; left: 0; z-index: 20; margin-top: 0.5rem;
+  display: flex; flex-direction: column; gap: 0.15rem; min-width: 150px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.35rem;
+}
+.nav-menu a { color: var(--muted); padding: 0.4rem 0.55rem; border-radius: 6px; }
+.nav-menu a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
+
+/* Gear settings menu next to the username (opens toward the right edge) */
+.settings-menu > summary.gear {
+  font-size: 1.05rem; line-height: 1; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.32rem 0.45rem; background: var(--panel-2);
+}
+.settings-menu > summary.gear::after { content: none; }
+.settings-menu > summary.gear:hover { color: var(--text); }
+.settings-menu[open] > summary.gear { color: var(--text); border-color: var(--accent); }
+.settings-menu .nav-menu { left: auto; right: 0; }
 
 /* Hamburger toggle — visible only on narrow screens (see media query below).
    The checkbox is visually hidden but stays keyboard-focusable; each page
@@ -69,6 +114,11 @@ a:hover { text-decoration: underline; }
   .topbar-right {
     margin-left: 0; justify-content: space-between;
     border-top: 1px solid var(--border); padding-top: 0.6rem;
+  }
+  /* Inline (non-floating) dropdown on mobile so it sits within the stacked menu. */
+  .nav-menu {
+    position: static; margin: 0.15rem 0 0.3rem 0.9rem;
+    border: none; background: none; padding: 0;
   }
 }
 
@@ -136,6 +186,7 @@ button {
 }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { background: var(--accent-hover); }
+button:disabled { opacity: 0.6; cursor: default; }
 button.linkbtn {
   background: none;
   border: none;
@@ -157,6 +208,23 @@ button.linkbtn:hover { text-decoration: underline; }
 .row-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 .row-form input { flex: 1 1 160px; }
 
+/* Dashboard stat tiles */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem; margin: 1.25rem 0 1.5rem;
+}
+.stat {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.85rem 1rem;
+  display: flex; flex-direction: column; gap: 0.15rem;
+}
+.stat-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 0.78rem; color: var(--muted); }
+.stat-accent { border-color: rgba(91, 140, 255, 0.4); }
+.stat-accent .stat-value { color: var(--accent); }
+.stat-danger { border-color: rgba(255, 107, 107, 0.4); }
+.stat-danger .stat-value { color: var(--danger); }
+
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem; }
 .card h3 { margin: 0 0 0.4rem; }
@@ -169,8 +237,27 @@ table.grid tr.inactive { opacity: 0.5; }
 .reset-form input { width: 140px; padding: 0.35rem 0.5rem; }
 
 /* --- Phase 2: meetings pipeline --- */
-.btn { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn:hover { background: var(--accent-hover); }
+/* .btn is a complete button style so it looks identical on a <button> and on an
+   <a> — links don't inherit the base `button {}` box (padding/radius/border), so
+   spell it out here or anchor "buttons" render as flat unpadded rectangles. */
+.btn {
+  display: inline-block;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+}
+.btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+  text-decoration: none;
+}
 .linkbtn.danger { color: var(--danger); }
 
 .upload-form { display: flex; flex-direction: column; gap: 1rem; margin: 1.25rem 0; }
@@ -179,6 +266,8 @@ table.grid tr.inactive { opacity: 0.5; }
 
 .prompt-picker { border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem; display: grid; gap: 0.5rem; }
 .prompt-picker legend { color: var(--muted); font-size: 0.85rem; padding: 0 0.4rem; }
+.picker-legend { display: flex; align-items: baseline; gap: 0.75rem; width: 100%; }
+.picker-legend .linkbtn { margin-left: auto; font-size: 0.8rem; }
 .check { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.5rem; align-items: baseline; }
 .check input { grid-row: span 2; }
 .check small { grid-column: 2; }
@@ -202,9 +291,24 @@ table.table th { color: var(--muted); font-weight: 600; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.jobs { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; }
+/* meeting status panel (also the HTMX polling target) */
+.status-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+}
+.status-panel.is-active { border-color: rgba(91, 140, 255, 0.4); }
+.status-line { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.6rem; flex-wrap: wrap; }
+.status-line:last-child { margin-bottom: 0; }
 
-.retry-failed { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.5rem 0; }
+.jobs { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.9rem; margin: 0; }
+.job { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.job .job-kind { flex: 0 1 auto; }
+.job .flash { flex-basis: 100%; margin: 0.3rem 0 0; }
+
+.retry-failed { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.75rem 0 0; }
 .retry-failed small { margin: 0; }
 
 .meeting-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
