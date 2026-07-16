@@ -17,9 +17,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.sessions import SessionMiddleware
 
 from . import __version__
 from . import db as db_mod
+from . import oidc as oidc_mod
 from . import prompts as prompts_mod
 from .bootstrap import bootstrap_admin
 from .config import get_settings
@@ -53,6 +55,19 @@ async def lifespan(app: FastAPI):
         lockout_seconds=settings.login_lockout_seconds,
     )
 
+    # Entra ID SSO client (registered lazily — no network I/O at boot). Left as
+    # None when SSO is not fully configured; the SSO routes then 404.
+    if settings.oidc_configured:
+        app.state.oauth = oidc_mod.build_oauth(settings)
+        log.info("Entra ID SSO enabled (tenant %s).", settings.oidc_tenant_id)
+    else:
+        app.state.oauth = None
+        if settings.oidc_enabled:
+            log.warning(
+                "OIDC_ENABLED is set but tenant/client credentials are incomplete; "
+                "Microsoft sign-in is disabled."
+            )
+
     worker = PipelineWorker(settings)
     worker.start()
     await worker.recover_and_resume()
@@ -66,6 +81,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="knowts", version=__version__, lifespan=lifespan)
+
+# Transient signed cookie used only to carry OAuth state/nonce across the SSO
+# redirect round trip (Authlib reads/writes request.session). It is separate
+# from the app's own server-side session cookie and is only written during the
+# SSO flow, so ordinary requests never receive it.
+_settings = get_settings()
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_settings.secret_key,
+    session_cookie="knowts_oauth",
+    same_site="lax",
+    https_only=_settings.cookie_secure,
+    max_age=600,
+)
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 

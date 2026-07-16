@@ -146,6 +146,22 @@ MIGRATIONS: list[tuple[int, str]] = [
               AND CAST(substr(step, 8) AS INTEGER) IN (SELECT id FROM prompts);
         """,
     ),
+    (
+        7,
+        # Entra ID / OIDC SSO. `email` links an Entra identity to a knowts user
+        # and `oidc_subject` stores the stable per-tenant object id (`oid`) so a
+        # renamed/re-emailed account still maps to the same row. Both are unique
+        # but nullable — local-only accounts leave them NULL. Partial indexes
+        # keep the uniqueness constraint while allowing many NULLs.
+        """
+        ALTER TABLE users ADD COLUMN email TEXT;
+        ALTER TABLE users ADD COLUMN oidc_subject TEXT;
+        CREATE UNIQUE INDEX idx_users_email
+            ON users(email) WHERE email IS NOT NULL;
+        CREATE UNIQUE INDEX idx_users_oidc_subject
+            ON users(oidc_subject) WHERE oidc_subject IS NOT NULL;
+        """,
+    ),
 ]
 
 

@@ -43,6 +43,41 @@ class Settings(BaseSettings):
     admin_user: str | None = Field(default=None, alias="ADMIN_USER")
     admin_password: str | None = Field(default=None, alias="ADMIN_PASSWORD")
 
+    # --- Local (username/password) login ----------------------------------
+    # When false, the login page hides the local password form and funnels
+    # colleagues to "Sign in with Microsoft". The form still works if reached
+    # directly (``/login?local=1``) so a break-glass admin can always get in;
+    # it is also always shown when SSO is not configured, so the app can never
+    # lock everyone out.
+    local_login_enabled: bool = Field(default=True, alias="LOCAL_LOGIN_ENABLED")
+
+    # --- Microsoft Entra ID (Azure AD) SSO via OpenID Connect -------------
+    # Off by default. When enabled and the tenant/client credentials below are
+    # set, the login page offers a "Sign in with Microsoft" button and runs the
+    # OIDC authorization-code flow against the tenant. See
+    # deploy/INTERNAL-DEPLOYMENT.md for the Entra app-registration steps.
+    oidc_enabled: bool = Field(default=False, alias="OIDC_ENABLED")
+    # Directory (tenant) ID — single-tenant. Use "organizations" only if you
+    # deliberately want any work/school account; a specific GUID is recommended.
+    oidc_tenant_id: str | None = Field(default=None, alias="OIDC_TENANT_ID")
+    oidc_client_id: str | None = Field(default=None, alias="OIDC_CLIENT_ID")
+    oidc_client_secret: str | None = Field(default=None, alias="OIDC_CLIENT_SECRET")
+    # Full public callback URL registered on the Entra app, e.g.
+    # https://knowts.corp.example/auth/sso/callback. Left blank, it is derived
+    # from the incoming request (needs the reverse proxy to forward the scheme).
+    oidc_redirect_url: str | None = Field(default=None, alias="OIDC_REDIRECT_URL")
+    # Comma/space-separated emails that should be granted admin on SSO login.
+    # Everyone else is provisioned as a member; promote others via /admin/users.
+    oidc_admin_emails: str = Field(default="", alias="OIDC_ADMIN_EMAILS")
+    # Optional hard restriction: only accept accounts whose email is in this
+    # domain (e.g. "example.com"). Blank accepts any email the tenant returns.
+    oidc_allowed_email_domain: str | None = Field(
+        default=None, alias="OIDC_ALLOWED_EMAIL_DOMAIN"
+    )
+    oidc_button_label: str = Field(
+        default="Sign in with Microsoft", alias="OIDC_BUTTON_LABEL"
+    )
+
     # --- Login rate limiting ----------------------------------------------
     login_max_attempts: int = Field(default=5, alias="LOGIN_MAX_ATTEMPTS")
     login_lockout_seconds: int = Field(default=15 * 60, alias="LOGIN_LOCKOUT_SECONDS")
@@ -86,6 +121,24 @@ class Settings(BaseSettings):
         default=0.5, alias="DIARIZATION_CLUSTER_THRESHOLD"
     )
     diarization_num_threads: int = Field(default=1, alias="DIARIZATION_NUM_THREADS")
+
+    @property
+    def oidc_configured(self) -> bool:
+        """True only when SSO is enabled *and* the tenant/client credentials
+        are all present. Route guards and the login page key off this."""
+        return bool(
+            self.oidc_enabled
+            and self.oidc_tenant_id
+            and self.oidc_client_id
+            and self.oidc_client_secret
+        )
+
+    @property
+    def oidc_admin_email_set(self) -> frozenset[str]:
+        """Lowercased set of admin emails parsed from ``OIDC_ADMIN_EMAILS``
+        (comma- or whitespace-separated)."""
+        raw = self.oidc_admin_emails.replace(",", " ").split()
+        return frozenset(e.strip().lower() for e in raw if e.strip())
 
     @property
     def diarization_configured(self) -> bool:

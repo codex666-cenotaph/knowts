@@ -7,6 +7,10 @@ data/
 # Local env
 .env
 
+# TLS material for the reverse proxy — never commit private keys/certs.
+deploy/certs/*
+!deploy/certs/README.txt
+
 # Python
 __pycache__/
 *.py[cod]

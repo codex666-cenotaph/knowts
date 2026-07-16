@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from . import security
 from .i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
 
-_USER_COLUMNS = "id, username, role, active, created_at, language"
+_USER_COLUMNS = "id, username, role, active, created_at, language, email"
+
+# Sentinel password hash for SSO-provisioned accounts. It is not a valid
+# argon2 encoding, so ``security.verify_password`` always returns False —
+# such accounts can never be signed into with a local password.
+SSO_NO_PASSWORD = "!"
 
 
 class UsernameTaken(Exception):
@@ -23,6 +28,7 @@ class User:
     active: bool
     created_at: str
     language: str = DEFAULT_LANGUAGE
+    email: str | None = None
 
     @property
     def is_admin(self) -> bool:
@@ -37,6 +43,7 @@ def _row_to_user(row: sqlite3.Row) -> User:
         active=bool(row["active"]),
         created_at=row["created_at"],
         language=row["language"],
+        email=row["email"] if "email" in row.keys() else None,
     )
 
 
@@ -52,6 +59,22 @@ def get_by_username(conn: sqlite3.Connection, username: str) -> User | None:
     row = conn.execute(
         f"SELECT {_USER_COLUMNS} FROM users WHERE username = ?",
         (username,),
+    ).fetchone()
+    return _row_to_user(row) if row else None
+
+
+def get_by_email(conn: sqlite3.Connection, email: str) -> User | None:
+    row = conn.execute(
+        f"SELECT {_USER_COLUMNS} FROM users WHERE email = ?",
+        (email.strip().lower(),),
+    ).fetchone()
+    return _row_to_user(row) if row else None
+
+
+def get_by_oidc_subject(conn: sqlite3.Connection, subject: str) -> User | None:
+    row = conn.execute(
+        f"SELECT {_USER_COLUMNS} FROM users WHERE oidc_subject = ?",
+        (subject,),
     ).fetchone()
     return _row_to_user(row) if row else None
 
@@ -118,6 +141,80 @@ def set_language(conn: sqlite3.Connection, user_id: int, language: str) -> None:
     if language not in SUPPORTED_LANGUAGES:
         raise ValueError(f"unsupported language: {language}")
     conn.execute("UPDATE users SET language = ? WHERE id = ?", (language, user_id))
+    conn.commit()
+
+
+# --- SSO (Entra ID / OIDC) provisioning -------------------------------------
+
+
+def provision_sso(
+    conn: sqlite3.Connection,
+    *,
+    subject: str,
+    email: str,
+    role: str = "member",
+) -> User:
+    """Create a knowts account for an Entra identity on first SSO login.
+
+    The username is the email; the password hash is a sentinel that can never
+    verify, so the account is SSO-only unless an admin sets a local password.
+    """
+    email = email.strip().lower()
+    if role not in ("admin", "member"):
+        raise ValueError(f"invalid role: {role}")
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (username, password_hash, role, email, oidc_subject) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (email, SSO_NO_PASSWORD, role, email, subject),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        raise UsernameTaken(email) from exc
+    user = get_by_id(conn, cur.lastrowid)
+    assert user is not None
+    return user
+
+
+def link_oidc_subject(
+    conn: sqlite3.Connection,
+    user_id: int,
+    subject: str,
+    email: str | None = None,
+) -> None:
+    """Attach an Entra ``oid`` (and optionally email) to a pre-existing account
+    so a local user can subsequently sign in via SSO as the same person."""
+    if email is not None:
+        conn.execute(
+            "UPDATE users SET oidc_subject = ?, email = ? WHERE id = ?",
+            (subject, email.strip().lower(), user_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET oidc_subject = ? WHERE id = ?", (subject, user_id)
+        )
+    conn.commit()
+
+
+def sync_sso_profile(
+    conn: sqlite3.Connection,
+    user_id: int,
+    *,
+    email: str,
+    promote_admin: bool,
+) -> None:
+    """Refresh the stored email on each SSO login and, when the identity is in
+    the admin allowlist, promote to admin. Never auto-demotes — an admin
+    removed from the allowlist is demoted deliberately via the admin UI."""
+    conn.execute(
+        "UPDATE users SET email = ? WHERE id = ?", (email.strip().lower(), user_id)
+    )
+    if promote_admin:
+        conn.execute(
+            "UPDATE users SET role = 'admin' WHERE id = ? AND role <> 'admin'",
+            (user_id,),
+        )
     conn.commit()
 
 

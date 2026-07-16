@@ -4,19 +4,34 @@
 <div class="auth-card">
   <img class="auth-logo" src="/static/favicon.svg" alt="" width="52" height="52">
   <h1>knowts</h1>
-  <p class="muted">Sign in to convert meeting recordings into notes.</p>
+  <p class="muted">{{ t('Sign in to convert meeting recordings into notes.') }}</p>
 
   {% if error %}<div class="flash flash-err">{{ error }}</div>{% endif %}
 
+  {% if oidc_enabled %}
+  <a class="btn-sso" href="/auth/sso/login?next={{ next|urlencode }}">
+    <svg class="ms-logo" viewBox="0 0 21 21" width="18" height="18" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+    </svg>
+    <span>{{ oidc_button_label }}</span>
+  </a>
+  {% if show_local %}<div class="sso-divider"><span>{{ t('or') }}</span></div>{% endif %}
+  {% endif %}
+
+  {% if show_local %}
   <form method="post" action="/login" class="stack">
     <input type="hidden" name="next" value="{{ next }}">
-    <label>Username
+    <label>{{ t('Username') }}
       <input type="text" name="username" value="{{ username or '' }}" autocomplete="username" autofocus required>
     </label>
-    <label>Password
+    <label>{{ t('Password') }}
       <input type="password" name="password" autocomplete="current-password" required>
     </label>
-    <button type="submit" class="primary">Sign in</button>
+    <button type="submit" class="primary">{{ t('Sign in') }}</button>
   </form>
+  {% endif %}
 </div>
 {% endblock %}

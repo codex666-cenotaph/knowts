@@ -1,0 +1,46 @@
+# knowts — TLS reverse proxy for internal publishing.
+#
+# Caddy terminates HTTPS and forwards to the knowts container over the compose
+# network. The site address comes from KNOWTS_DOMAIN (set in .env / compose).
+# Pick ONE of the three TLS modes below.
+
+{$KNOWTS_DOMAIN} {
+	encode zstd gzip
+
+	# --- TLS: choose ONE --------------------------------------------------
+	# 1) Internal self-signed CA (default). Caddy mints its own local CA and a
+	#    leaf cert for the site. Zero cert management. Distribute Caddy's root
+	#    CA to office machines to avoid the browser warning — it is created in
+	#    the caddy_data volume at:
+	#      /data/caddy/pki/authorities/local/root.crt
+	#    (copy it out with: docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./)
+	tls internal
+
+	# 2) Bring your own cert (recommended once you have a corporate/internal-CA
+	#    cert that office machines already trust — no browser warning). Drop the
+	#    files in deploy/certs/ and replace the line above with:
+	#      tls /certs/knowts.crt /certs/knowts.key
+
+	# 3) Public trusted cert via DNS challenge (only if the domain has a public
+	#    DNS zone and you provide a DNS-provider API token). Needs a Caddy build
+	#    with the DNS plugin; replace the line above with e.g.:
+	#      tls { dns cloudflare {env.CF_API_TOKEN} }
+
+	# --- App --------------------------------------------------------------
+	# reverse_proxy sets X-Forwarded-Proto/For/Host automatically, which uvicorn
+	# reads (--proxy-headers) so the app sees the real https scheme.
+	reverse_proxy knowts:8000
+
+	# Uploads can be large (see MAX_UPLOAD_MB); don't let the proxy cap them.
+	request_body {
+		max_size 1GB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}

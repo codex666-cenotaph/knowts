@@ -6,7 +6,11 @@ services:
     container_name: knowts
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # Bound to loopback: when publishing internally, the Caddy TLS proxy
+      # (the `tls` profile below) is the only front door — nothing serves plain
+      # HTTP on the network. Caddy still reaches this container as `knowts:8000`
+      # over the compose network. For local dev, http://127.0.0.1:8000 works.
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/data
     environment:
@@ -14,6 +18,17 @@ services:
       SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY to a random 32+ byte string}"
       ADMIN_USER: "${ADMIN_USER:-}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      # Set true behind the TLS proxy so session cookies carry the Secure flag.
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # --- Microsoft Entra ID (Azure AD) SSO ---
+      LOCAL_LOGIN_ENABLED: "${LOCAL_LOGIN_ENABLED:-true}"
+      OIDC_ENABLED: "${OIDC_ENABLED:-false}"
+      OIDC_TENANT_ID: "${OIDC_TENANT_ID:-}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
+      OIDC_REDIRECT_URL: "${OIDC_REDIRECT_URL:-}"
+      OIDC_ADMIN_EMAILS: "${OIDC_ADMIN_EMAILS:-}"
+      OIDC_ALLOWED_EMAIL_DOMAIN: "${OIDC_ALLOWED_EMAIL_DOMAIN:-}"
       # --- upstreams (Phase 2+) ---
       LLM_BASE_URL: "${LLM_BASE_URL:-http://link:8080/v1}"
       LLM_DEFAULT_MODEL: "${LLM_DEFAULT_MODEL:-qwen2.5-32b}"
@@ -22,7 +37,6 @@ services:
       STT_MODEL: "${STT_MODEL:-whisper-large-v3-turbo}"
       # --- tunables ---
       MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-500}"
-      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       DATA_DIR: /data
       # --- speaker diarization (optional, off by default) ---
       # Flip DIARIZATION_ENABLED=true and drop the ONNX models into
@@ -33,3 +47,33 @@ services:
       DIARIZATION_NUM_SPEAKERS: "${DIARIZATION_NUM_SPEAKERS:-0}"
       DIARIZATION_CLUSTER_THRESHOLD: "${DIARIZATION_CLUSTER_THRESHOLD:-0.5}"
       DIARIZATION_NUM_THREADS: "${DIARIZATION_NUM_THREADS:-1}"
+
+  # TLS reverse proxy for internal publishing. Enable with the `tls` profile:
+  #   docker compose --profile tls up -d --build
+  # It terminates HTTPS on 443 and forwards to knowts over the compose network.
+  # TLS mode is chosen in deploy/Caddyfile (self-signed internal CA by default;
+  # swap in your corporate cert). See deploy/INTERNAL-DEPLOYMENT.md.
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: knowts-caddy
+    restart: unless-stopped
+    profiles: ["tls"]
+    depends_on:
+      - knowts
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The hostname colleagues use, e.g. knowts.corp.example. Must match the
+      # host in OIDC_REDIRECT_URL and the Entra app's redirect URI.
+      KNOWTS_DOMAIN: "${KNOWTS_DOMAIN:-knowts.internal}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Drop your own cert + key here if you use the "bring your own cert" mode.
+      - ./deploy/certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

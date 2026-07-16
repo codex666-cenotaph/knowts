@@ -158,6 +158,23 @@ docker compose up --build
 
 Data (SQLite DB + uploaded audio) persists in `./data`.
 
+## Publishing internally (Entra ID SSO + TLS)
+
+To publish knowts to your organisation over the office network/VPN (not the
+public internet) with Microsoft **Entra ID single sign-on** and **HTTPS**, see
+[`deploy/INTERNAL-DEPLOYMENT.md`](./deploy/INTERNAL-DEPLOYMENT.md). In short:
+
+- Set the `OIDC_*` variables (from an Entra app registration) in `.env`; the
+  login page then offers **"Sign in with Microsoft"** alongside local login.
+  First-time SSO users are provisioned as members just-in-time;
+  `OIDC_ADMIN_EMAILS` grants admin.
+- Bring up the bundled Caddy TLS reverse proxy with the `tls` profile:
+  ```sh
+  docker compose --profile tls up -d --build
+  ```
+  Caddy terminates HTTPS on 443 (self-signed internal CA by default, or drop in
+  your own corporate cert) and forwards to knowts. Set `COOKIE_SECURE=true`.
+
 ## Tests
 
 ```sh

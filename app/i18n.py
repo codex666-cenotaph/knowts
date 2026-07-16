@@ -187,6 +187,8 @@ _NL: dict[str, str] = {
     "Sign in to convert meeting recordings into notes.": "Log in om vergaderopnames om te zetten in notities.",
     "Sign in": "Inloggen",
     "Password": "Wachtwoord",
+    "or": "of",
+    "Sign in with Microsoft": "Aanmelden met Microsoft",
 }
 
 _TRANSLATIONS: dict[str, dict[str, str]] = {"nl": _NL}
