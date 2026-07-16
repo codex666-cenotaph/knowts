@@ -62,27 +62,51 @@ consent is normally required for these.
 
 ## 2. Configure knowts
 
-Copy `.env.example` to `.env` and fill in:
+Configuration splits in two: **secrets** live in files under `./secrets/`
+(mounted into the container at `/run/secrets`, kept out of `docker inspect` and
+the process environment); everything **non-secret** lives in `.env`.
+
+### 2a. Create the secret files
+
+```sh
+./deploy/init-secrets.sh
+```
+
+This writes three gitignored files (see [`secrets/README.md`](../secrets/README.md)):
+
+| File                         | Setting              | Action                                    |
+| ---------------------------- | -------------------- | ----------------------------------------- |
+| `secrets/secret_key`         | `SECRET_KEY`         | Auto-generated (stable, high-entropy).    |
+| `secrets/admin_password`     | `ADMIN_PASSWORD`     | Edit — set the break-glass admin password.|
+| `secrets/oidc_client_secret` | `OIDC_CLIENT_SECRET` | Paste the Entra client secret **Value**.  |
+
+```sh
+printf '%s' 'a-strong-break-glass-password' > secrets/admin_password
+printf '%s' '<entra client secret value>'   > secrets/oidc_client_secret
+```
+
+### 2b. Set non-secret config in `.env`
 
 ```dotenv
-SECRET_KEY=<python -c "import secrets;print(secrets.token_urlsafe(48))">
 ADMIN_USER=marco
-ADMIN_PASSWORD=<a strong password — break-glass only>
 
 # Served over HTTPS via the proxy:
 COOKIE_SECURE=true
 KNOWTS_DOMAIN=knowts.corp.example
 
-# Entra ID SSO
+# Entra ID SSO (client secret is a secret file, not here)
 OIDC_ENABLED=true
 OIDC_TENANT_ID=<directory (tenant) id>
 OIDC_CLIENT_ID=<application (client) id>
-OIDC_CLIENT_SECRET=<client secret value>
 OIDC_REDIRECT_URL=https://knowts.corp.example/auth/sso/callback
 OIDC_ADMIN_EMAILS=marco@example.com
 OIDC_ALLOWED_EMAIL_DOMAIN=example.com   # optional
 LOCAL_LOGIN_ENABLED=true                # keep break-glass local login
 ```
+
+> Do **not** also put `SECRET_KEY`, `ADMIN_PASSWORD`, or `OIDC_CLIENT_SECRET` in
+> `.env` for the Docker deployment — an env var would override the secret file.
+> (They belong in `.env` only when running the app directly with `uvicorn`.)
 
 ---
 
@@ -131,8 +155,10 @@ Without the profile (`docker compose up -d`) only knowts runs, on
 
 ## 5. Operating notes
 
-- **Rotating the client secret:** create a new secret in Entra, update
-  `OIDC_CLIENT_SECRET`, `docker compose up -d` to restart knowts.
+- **Rotating the client secret:** create a new secret in Entra, overwrite
+  `secrets/oidc_client_secret`, then `docker compose up -d` to restart knowts.
+  Same pattern for `secrets/secret_key` (note: rotating it invalidates all
+  active sessions) and `secrets/admin_password`.
 - **Adding admins:** either add the email to `OIDC_ADMIN_EMAILS` and restart, or
   promote the existing member on the **Users** page (no restart).
 - **Removing access:** unassign the user in Entra (if assignment is required)

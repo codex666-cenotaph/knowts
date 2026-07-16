@@ -7,6 +7,7 @@ the contract is stable for later phases and documented in one place.
 
 from __future__ import annotations
 
+import os
 import secrets
 from functools import lru_cache
 from pathlib import Path
@@ -14,12 +15,21 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Directory where Docker secrets are mounted (one file per secret, file name =
+# the setting's env name, e.g. /run/secrets/secret_key). Used for the sensitive
+# values (SECRET_KEY, ADMIN_PASSWORD, OIDC_CLIENT_SECRET) so they never appear in
+# the container's environment (docker inspect / /proc/<pid>/environ). Env vars
+# still win over files; a missing directory (local/uvicorn dev, tests) is a
+# no-op. Override the location with SECRETS_DIR.
+_SECRETS_DIR = os.environ.get("SECRETS_DIR", "/run/secrets")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        secrets_dir=_SECRETS_DIR if Path(_SECRETS_DIR).is_dir() else None,
     )
 
     # --- Storage -----------------------------------------------------------

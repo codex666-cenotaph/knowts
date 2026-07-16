@@ -11,6 +11,10 @@ data/
 deploy/certs/*
 !deploy/certs/README.txt
 
+# Docker secret files (SECRET_KEY, ADMIN_PASSWORD, OIDC_CLIENT_SECRET).
+secrets/*
+!secrets/README.md
+
 # Python
 __pycache__/
 *.py[cod]

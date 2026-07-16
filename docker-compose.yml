@@ -13,19 +13,27 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/data
+    # Sensitive values are provided as Docker secrets (files under /run/secrets),
+    # NOT environment variables, so they stay out of `docker inspect` and the
+    # process environment. Create them once with deploy/init-secrets.sh. Env vars
+    # would take precedence over the files, so they are intentionally absent from
+    # `environment:` below (an empty env var would otherwise mask the secret).
+    secrets:
+      - secret_key         # -> SECRET_KEY
+      - admin_password     # -> ADMIN_PASSWORD
+      - oidc_client_secret # -> OIDC_CLIENT_SECRET
     environment:
-      # --- required in any real deployment ---
-      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY to a random 32+ byte string}"
+      # --- non-secret config (safe as env vars) ---
       ADMIN_USER: "${ADMIN_USER:-}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
       # Set true behind the TLS proxy so session cookies carry the Secure flag.
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       # --- Microsoft Entra ID (Azure AD) SSO ---
+      # Tenant/client IDs, redirect URL, and admin emails are not secrets. The
+      # client *secret* is in ./secrets/oidc_client_secret (see above).
       LOCAL_LOGIN_ENABLED: "${LOCAL_LOGIN_ENABLED:-true}"
       OIDC_ENABLED: "${OIDC_ENABLED:-false}"
       OIDC_TENANT_ID: "${OIDC_TENANT_ID:-}"
       OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
-      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
       OIDC_REDIRECT_URL: "${OIDC_REDIRECT_URL:-}"
       OIDC_ADMIN_EMAILS: "${OIDC_ADMIN_EMAILS:-}"
       OIDC_ALLOWED_EMAIL_DOMAIN: "${OIDC_ALLOWED_EMAIL_DOMAIN:-}"
@@ -77,3 +85,14 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+
+# File-based Docker secrets. Each file is mounted read-only at
+# /run/secrets/<name> and read by the app via SECRETS_DIR (=/run/secrets).
+# Create them with:  ./deploy/init-secrets.sh   (the files are gitignored).
+secrets:
+  secret_key:
+    file: ./secrets/secret_key
+  admin_password:
+    file: ./secrets/admin_password
+  oidc_client_secret:
+    file: ./secrets/oidc_client_secret

@@ -170,10 +170,16 @@ public internet) with Microsoft **Entra ID single sign-on** and **HTTPS**, see
   `OIDC_ADMIN_EMAILS` grants admin.
 - Bring up the bundled Caddy TLS reverse proxy with the `tls` profile:
   ```sh
+  ./deploy/init-secrets.sh              # create ./secrets/* (one-time)
   docker compose --profile tls up -d --build
   ```
   Caddy terminates HTTPS on 443 (self-signed internal CA by default, or drop in
   your own corporate cert) and forwards to knowts. Set `COOKIE_SECURE=true`.
+
+Sensitive values (`SECRET_KEY`, `ADMIN_PASSWORD`, `OIDC_CLIENT_SECRET`) are read
+from Docker secret files under `./secrets/` (mounted at `/run/secrets`), not
+from environment variables, so they stay out of `docker inspect`. Non-secret
+config stays in `.env`.
 
 ## Tests
 
