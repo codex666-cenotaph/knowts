@@ -117,46 +117,95 @@ LOCAL_LOGIN_ENABLED=true                # keep break-glass local login
 
 ---
 
-## 3. Terminate TLS with Caddy
+## 3. Choose how TLS is terminated
 
-The compose file ships a Caddy reverse proxy behind the `tls` profile. It listens
-on 443 and forwards to knowts (which itself only binds to loopback now, so
-nothing serves plain HTTP on the network).
+**TLS is optional and decoupled from SSO.** knowts always serves plain HTTP on
+port 8000; something in front should add HTTPS for a real publish. Pick the mode
+that fits your environment — set these in `.env`:
 
-Pick a TLS mode in [`deploy/Caddyfile`](./Caddyfile):
+| Mode | `KNOWTS_BIND` | `tls` profile | `COOKIE_SECURE` | You browse |
+| --- | --- | --- | --- | --- |
+| **A. Bundled Caddy** terminates TLS | `127.0.0.1` | yes | `true` | `https://$KNOWTS_DOMAIN` (443) |
+| **B. Your own reverse proxy** terminates TLS | `0.0.0.0` | no | `true` | your proxy → `http://<host>:8000` |
+| **C. Plain HTTP** (dev / trusted LAN) | `0.0.0.0` | no | `false` | `http://<host>:8000` |
 
-| Mode | When to use | Browser trust |
+> `COOKIE_SECURE=true` requires the browser to actually be on HTTPS (modes A/B).
+> Setting it `true` in mode C would stop the session cookie being sent.
+
+### Mode A — bundled Caddy
+
+The compose file ships a Caddy reverse proxy behind the `tls` profile; it listens
+on 443 and forwards to knowts (kept on loopback, so nothing serves plain HTTP on
+the network). Pick a cert strategy in [`deploy/Caddyfile`](./Caddyfile):
+
+| Cert | When to use | Browser trust |
 | --- | --- | --- |
 | `tls internal` *(default)* | Quickest; no cert to manage | Warning unless you distribute Caddy's root CA |
 | `tls /certs/knowts.crt /certs/knowts.key` | You have a cert from a corporate/internal CA machines already trust | Trusted, no warning |
 | `tls { dns <provider> {env.TOKEN} }` | You own a public DNS zone + API token | Publicly trusted |
 
-- **Internal CA (default):** after first start, export Caddy's root CA and push
-  it to office machines via MDM/GPO to remove the warning:
+- **Internal CA (default):** export Caddy's root CA after first start and push it
+  to office machines via MDM/GPO to remove the warning:
   ```bash
   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./knowts-root-ca.crt
   ```
 - **Own cert:** drop `knowts.crt` + `knowts.key` into `deploy/certs/` and switch
-  the `tls` line in the Caddyfile. (These files are gitignored.)
+  the `tls` line in the Caddyfile (files are gitignored).
 
-Point your internal DNS `KNOWTS_DOMAIN` (e.g. `knowts.corp.example`) at the host
-running Docker.
+Point internal DNS `KNOWTS_DOMAIN` at the Docker host.
+
+### Mode B — your own reverse proxy
+
+Expose knowts on the LAN and terminate TLS at your existing proxy / load
+balancer (nginx, Traefik, HAProxy, a corporate LB, …). Do **not** start the
+`tls` profile. Your proxy must:
+
+- forward to `http://<docker-host>:8000`;
+- send `X-Forwarded-Proto: https` (so the app sets Secure cookies and correct
+  redirect URLs — knowts already runs uvicorn with `--proxy-headers`);
+- for large uploads, allow a big request body (see `MAX_UPLOAD_MB`).
+
+Optionally set `FORWARDED_ALLOW_IPS` to your proxy's source IP so LAN clients
+can't spoof the scheme. Example nginx server block:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name knowts.corp.example;
+    ssl_certificate     /etc/ssl/knowts.crt;
+    ssl_certificate_key /etc/ssl/knowts.key;
+    client_max_body_size 1g;
+
+    location / {
+        proxy_pass http://<docker-host>:8000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+    }
+}
+```
+
+Set `OIDC_REDIRECT_URL=https://knowts.corp.example/auth/sso/callback` to match
+the public hostname your proxy serves.
 
 ---
 
 ## 4. Launch
 
+**Mode A (bundled Caddy):**
 ```bash
-docker compose --profile tls up -d --build
+docker compose --profile tls up -d --build   # knowts + caddy; browse https://$KNOWTS_DOMAIN
 ```
 
-- `knowts` and `caddy` both start; browse to `https://<KNOWTS_DOMAIN>`.
+**Mode B / C (own proxy or plain HTTP):**
+```bash
+docker compose up -d --build                 # knowts only, on <host>:8000
+```
+
+Then:
 - Click **Sign in with Microsoft** → Entra login → back to knowts, signed in.
 - Verify an admin email lands as admin (Users page visible) and a normal
   colleague lands as a member.
-
-Without the profile (`docker compose up -d`) only knowts runs, on
-`http://127.0.0.1:8000` — handy for local dev, but not for the internal publish.
 
 ---
 

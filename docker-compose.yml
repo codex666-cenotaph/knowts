@@ -27,8 +27,12 @@ services:
     environment:
       # --- non-secret config (safe as env vars) ---
       ADMIN_USER: "${ADMIN_USER:-}"
-      # Set true behind the TLS proxy so session cookies carry the Secure flag.
+      # Set true when TLS terminates in front of the app (bundled Caddy or your
+      # own reverse proxy) so session cookies carry the Secure flag.
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # Upstream peers trusted for X-Forwarded-Proto (default "*"). Behind your
+      # own reverse proxy you can pin this to the proxy's IP.
+      FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-*}"
       # --- Microsoft Entra ID (Azure AD) SSO ---
       # Tenant/client IDs, redirect URL, and admin emails are not secrets. The
       # client *secret* is in ./secrets/oidc_client_secret (see above).

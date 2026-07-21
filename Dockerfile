@@ -33,8 +33,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)"
 
-# --proxy-headers + trusted forwarder: when a TLS-terminating reverse proxy
-# (see deploy/Caddyfile) sits in front, honour X-Forwarded-Proto so redirect
-# URLs and the Secure cookie flag reflect the real https scheme.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips", "*"]
+# --proxy-headers: when a TLS-terminating reverse proxy (the bundled Caddy, or
+# your own) sits in front, honour X-Forwarded-Proto so redirect URLs and the
+# Secure cookie flag reflect the real https scheme. FORWARDED_ALLOW_IPS controls
+# which upstream peers are trusted for those headers (default "*" = any; set it
+# to your proxy's source IP to stop LAN clients spoofing the scheme). Runs via
+# `sh -c ... exec` so the env var is interpolated while uvicorn stays PID 1.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\""]

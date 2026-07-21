@@ -158,23 +158,33 @@ docker compose up --build
 
 Data (SQLite DB + uploaded audio) persists in `./data`.
 
-## Publishing internally (Entra ID SSO + TLS)
+## Publishing internally (Entra ID SSO, optional TLS)
 
 To publish knowts to your organisation over the office network/VPN (not the
-public internet) with Microsoft **Entra ID single sign-on** and **HTTPS**, see
+public internet) with Microsoft **Entra ID single sign-on** — and HTTPS however
+you prefer to terminate it — see
 [`deploy/INTERNAL-DEPLOYMENT.md`](./deploy/INTERNAL-DEPLOYMENT.md). In short:
 
 - Set the `OIDC_*` variables (from an Entra app registration) in `.env`; the
   login page then offers **"Sign in with Microsoft"** alongside local login.
   First-time SSO users are provisioned as members just-in-time;
   `OIDC_ADMIN_EMAILS` grants admin.
-- Bring up the bundled Caddy TLS reverse proxy with the `tls` profile:
-  ```sh
-  ./deploy/init-secrets.sh              # create ./secrets/* (one-time)
-  docker compose --profile tls up -d --build
-  ```
-  Caddy terminates HTTPS on 443 (self-signed internal CA by default, or drop in
-  your own corporate cert) and forwards to knowts. Set `COOKIE_SECURE=true`.
+- **TLS is optional** — pick how HTTPS is terminated (details in the guide):
+  - **Bundled Caddy** (this repo terminates TLS): keep `KNOWTS_BIND=127.0.0.1`
+    and start the `tls` profile —
+    ```sh
+    ./deploy/init-secrets.sh              # create ./secrets/* (one-time)
+    docker compose --profile tls up -d --build   # https on :443
+    ```
+  - **Your own reverse proxy** (nginx/Traefik/LB terminates TLS): set
+    `KNOWTS_BIND=0.0.0.0`, leave the `tls` profile off, and point your proxy at
+    `http://<host>:8000` —
+    ```sh
+    ./deploy/init-secrets.sh
+    docker compose up -d --build
+    ```
+  In both cases set `COOKIE_SECURE=true` (browser is on HTTPS). For a plain-HTTP
+  LAN test, `KNOWTS_BIND=0.0.0.0` with `COOKIE_SECURE=false`.
 
 Sensitive values (`SECRET_KEY`, `ADMIN_PASSWORD`, `OIDC_CLIENT_SECRET`) are read
 from Docker secret files under `./secrets/` (mounted at `/run/secrets`), not
