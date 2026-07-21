@@ -6,11 +6,13 @@ services:
     container_name: knowts
     restart: unless-stopped
     ports:
-      # Bound to loopback: when publishing internally, the Caddy TLS proxy
-      # (the `tls` profile below) is the only front door — nothing serves plain
-      # HTTP on the network. Caddy still reaches this container as `knowts:8000`
-      # over the compose network. For local dev, http://127.0.0.1:8000 works.
-      - "127.0.0.1:8000:8000"
+      # Bind address is KNOWTS_BIND (default 127.0.0.1 = loopback only). When
+      # publishing internally the Caddy TLS proxy (the `tls` profile below) is
+      # the only front door — nothing serves plain HTTP on the network, and
+      # Caddy reaches this container as `knowts:8000` over the compose network.
+      # For a quick LAN test WITHOUT TLS, set KNOWTS_BIND=0.0.0.0 in .env to
+      # expose http://<server-ip>:8000 (plaintext — dev only; revert for prod).
+      - "${KNOWTS_BIND:-127.0.0.1}:8000:8000"
     volumes:
       - ./data:/data
     # Sensitive values are provided as Docker secrets (files under /run/secrets),
