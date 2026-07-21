@@ -83,7 +83,14 @@ This writes three gitignored files (see [`secrets/README.md`](../secrets/README.
 ```sh
 printf '%s' 'a-strong-break-glass-password' > secrets/admin_password
 printf '%s' '<entra client secret value>'   > secrets/oidc_client_secret
+./deploy/init-secrets.sh   # re-run to repair file permissions after editing
 ```
+
+> The container runs as a non-root user, so the secret files must stay readable
+> (`0644`); the `./secrets` directory is `0700` so other host users can't read
+> them. `init-secrets.sh` sets this — re-run it (or `chmod 644 secrets/*`) if you
+> edit a file and your shell's umask tightens it, otherwise the container fails
+> to start with `PermissionError: /run/secrets/...`.
 
 ### 2b. Set non-secret config in `.env`
 

@@ -6,12 +6,21 @@
 #
 # The files live in ./secrets/ and are gitignored — never commit them. This
 # script never overwrites a file that already has content, so it is safe to
-# re-run. Edit the values afterwards as needed.
+# re-run (re-running also repairs the file permissions below). Edit the values
+# afterwards as needed.
+#
+# Permissions: the knowts container runs as a non-root user (uid 10001), and a
+# bind-mounted secret keeps its host permissions — so the files must be
+# world-readable (0644) or the container cannot read them. Plain `docker
+# compose` (non-Swarm) ignores per-secret uid/gid/mode, so this is the reliable
+# way. Host-side confidentiality comes from the directory instead: ./secrets is
+# 0700, so other host users cannot enter it (the Docker daemon mounts as root
+# and is unaffected).
 set -eu
 
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 mkdir -p secrets
-umask 077
+chmod 700 secrets
 
 # SECRET_KEY — signs session cookies. Must be high-entropy and stable across
 # restarts. Generated only if missing/empty.
@@ -38,6 +47,10 @@ if [ ! -e secrets/oidc_client_secret ]; then
   : > secrets/oidc_client_secret
   echo "Created empty secrets/oidc_client_secret (fill in when enabling SSO)"
 fi
+
+# Readable by the non-root container user (see header note). Re-applied every
+# run so files created by an older version of this script are repaired too.
+chmod 0644 secrets/secret_key secrets/admin_password secrets/oidc_client_secret
 
 echo
 echo "Done. Next: set ADMIN_USER + the OIDC_* (non-secret) values in .env,"

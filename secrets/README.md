@@ -17,7 +17,13 @@ Create them once with:
 ```
 
 The actual secret files are **gitignored** — never commit them. Only this
-README is tracked. `chmod 600` is applied by the init script (`umask 077`).
+README is tracked.
+
+**Permissions:** the container runs as a non-root user, and a bind-mounted
+secret keeps its host permissions, so the files are `0644` (readable by the
+container). Host-side confidentiality comes from this directory being `0700`
+(other host users can't enter it). The init script sets both; re-run it if you
+created the files by hand.
 
 Non-secret configuration (tenant/client IDs, redirect URL, admin emails, etc.)
 stays in `.env`.
